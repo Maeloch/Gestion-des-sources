@@ -1,0 +1,60 @@
+Projet/
+├── .env
+├── .gitignore
+├── pyproject.toml
+└── app/
+    ├── __init__.py
+    ├── config.py
+    ├── database.py
+    ├── main.py
+    ├── models/
+    │   ├── __init__.py
+    │   ├── source.py
+    │   ├── radionuclide.py
+    │   ├── audit.py
+    │   ├── user.py
+    │   ├── location.py
+    │   ├── consumption.py
+    │   └── movement.py
+    ├── repositories/
+    │   ├── __init__.py
+    │   ├── source.py
+    │   ├── radionuclide.py
+    │   ├── audit.py
+    │   ├── user.py
+    │   └── consumption.py
+    ├── services/
+    │   ├── __init__.py
+    │   ├── decay.py
+    │   ├── laraweb.py
+    │   ├── consumption.py
+    │   └── audit.py
+    ├── routes/
+    │   ├── __init__.py
+    │   ├── auth.py
+    │   ├── sources.py
+    │   ├── radionuclides.py
+    │   ├── consumptions.py
+    │   ├── audit.py
+    │   └── users.py
+    ├── security/
+    │   ├── __init__.py
+    │   ├── auth.py
+    │   └── permissions.py
+    ├── scripts/
+    │   ├── __init__.py
+    │   ├── init_db.py
+    │   ├── import_excel.py
+    │   └── export_excel.py
+    ├── static/
+    │   └── style.css
+    └── templates/
+        ├── base.html
+        ├── index.html
+        ├── sources.html
+        ├── radionuclides.html
+        ├── consumptions.html
+        ├── audit.html
+        └── auth/
+            ├── login.html
+            └── register.html
