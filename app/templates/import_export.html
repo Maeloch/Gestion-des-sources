@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Import / Export{% endblock %}
+{% block page_title %}Import / Export{% endblock %}
+
+{% block content %}
+    {% if current_user.role.value == "admin" %}
+    <div class="card">
+        <h2>Import</h2>
+        <p class="page-lead mt-0">Reconnaît deux formats : le fichier d'inventaire Excel historique (feuilles "Sources scellées", "Sources non scellées", "Sources consommables") ou un fichier déjà exporté par cette application (feuille "Sources"). Par défaut, une source déjà présente (même identifiant) est ignorée, pas écrasée : l'import peut être relancé sans risque. Beaucoup de colonnes du fichier n'ont pas d'équivalent direct dans l'application ; elles sont regroupées dans le champ "Commentaire" de chaque source pour ne rien perdre. Chaque import est tracé dans l'audit.</p>
+
+        <form id="importForm">
+            <label for="fichier">Fichier .xlsx :</label>
+            <input type="file" id="fichier" accept=".xlsx" required>
+
+            <label for="mettre_a_jour_existantes">
+                <input type="checkbox" id="mettre_a_jour_existantes" style="width:auto;display:inline;vertical-align:middle;">
+                Mettre à jour les sources déjà présentes (au lieu de les ignorer)
+            </label>
+            <p class="hint">Utile pour corriger une erreur : exporter les sources, corriger le fichier obtenu à la main, cocher cette case, puis réimporter ce fichier corrigé. Les radionucléides déjà associés à une source ne sont jamais modifiés par cette option (seuls les champs de la source elle-même le sont), pour ne pas risquer d'en créer des doublons.</p>
+
+            <button type="submit" class="primary">Importer</button>
+        </form>
+
+        <div id="importResult" style="margin-top:1rem;"></div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <h2>Export</h2>
+        <p class="page-lead mt-0">Accessible aux administrateurs et aux utilisateurs Matière Nucléaire.</p>
+
+        <h3>Liste des sources</h3>
+        <p class="text-muted" style="margin-top:-0.4rem;">Fichier complet (actives et archivées), avec les radionucléides sur une deuxième feuille.</p>
+        <div class="actions-row">
+            <button onclick="window.location.href='/export/sources.xlsx'">Télécharger (.xlsx)</button>
+            <button onclick="window.location.href='/export/sources.ods'">Télécharger (.ods)</button>
+            <button onclick="window.location.href='/export/sources.pdf'">Télécharger (.pdf)</button>
+        </div>
+
+        <h3>Annexe 1</h3>
+        <p class="text-muted" style="margin-top:-0.4rem;">Inventaire physique des matières nucléaires, pré-rempli (désignation, masse) pour chaque source Matière Nucléaire ; les colonnes de mesure physique restent à compléter sur place.</p>
+        <div class="actions-row">
+            <button onclick="window.location.href='/export/annexe1.xlsx'">Télécharger (.xlsx)</button>
+            <button onclick="window.location.href='/export/annexe1.ods'">Télécharger (.ods)</button>
+            <button onclick="window.location.href='/export/annexe1.pdf'">Télécharger (.pdf)</button>
+        </div>
+
+        <h3>Tableau 1a</h3>
+        <p class="text-muted" style="margin-top:-0.4rem;">Récapitulatif par matière et par lieu (IRMA / EPICEA), déduit automatiquement de l'Annexe 1.</p>
+        <div class="actions-row">
+            <button onclick="window.location.href='/export/tableau1a.xlsx'">Télécharger (.xlsx)</button>
+            <button onclick="window.location.href='/export/tableau1a.ods'">Télécharger (.ods)</button>
+            <button onclick="window.location.href='/export/tableau1a.pdf'">Télécharger (.pdf)</button>
+        </div>
+
+        <h3>Inventaire physique (Matières Nucléaires)</h3>
+        <p class="text-muted" style="margin-top:-0.4rem;">Document à imprimer pour vérifier chaque source Matière Nucléaire sur place : une ligne par source, avec son radionucléide, son emplacement, une case à cocher pour confirmer la présence, et deux emplacements de signature. À compléter à la main, signer, et conserver.</p>
+        <div class="actions-row">
+            <button onclick="window.location.href='/export/inventaire_mn.pdf'">Télécharger (.pdf)</button>
+        </div>
+    </div>
+
+    {% if current_user.role.value == "admin" %}
+    <script>
+        document.getElementById('importForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById('fichier');
+            if (!fileInput.files.length) return;
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('mettre_a_jour_existantes', document.getElementById('mettre_a_jour_existantes').checked);
+
+            const resultDiv = document.getElementById('importResult');
+            resultDiv.innerHTML = '<em>Import en cours...</em>';
+
+            const response = await fetch('/import/inventaire', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                resultDiv.innerHTML = `<p style="color:var(--danger);">Erreur : ${error.detail || 'Veuillez réessayer.'}</p>`;
+                return;
+            }
+
+            const r = await response.json();
+            let html = '<h3>Résultat de l\'import</h3>';
+            html += `<p>Feuilles traitées : ${r.feuilles_traitees.join(', ') || 'aucune'}</p>`;
+            html += `<p><strong>${r.sources_creees}</strong> source(s) créée(s), <strong>${r.sources_mises_a_jour.length}</strong> mise(s) à jour, <strong>${r.radionuclides_crees}</strong> radionucléide(s) créé(s), <strong>${r.radionuclides_mis_a_jour}</strong> mis à jour, <strong>${r.lieux_crees}</strong> lieu(x) créé(s).</p>`;
+
+            if (r.radionuclides_supprimes.length) {
+                html += `<p>${r.radionuclides_supprimes.length} radionucléide(s) retiré(s) (absent(s) du fichier réimporté, sur une source mise à jour) :</p><ul>`;
+                r.radionuclides_supprimes.forEach(x => {
+                    html += `<li>${x.source_id} : ${x.nom}</li>`;
+                });
+                html += '</ul>';
+            }
+
+            if (r.sources_ignorees_deja_presentes.length) {
+                html += `<p>${r.sources_ignorees_deja_presentes.length} source(s) déjà présente(s), ignorée(s) :</p><ul>`;
+                r.sources_ignorees_deja_presentes.forEach(x => {
+                    html += `<li>${x.feuille} ligne ${x.ligne} : ${x.id}</li>`;
+                });
+                html += '</ul>';
+            }
+
+            if (r.sources_ignorees_erreur.length) {
+                html += `<p style="color:var(--danger);">${r.sources_ignorees_erreur.length} ligne(s) en erreur :</p><ul>`;
+                r.sources_ignorees_erreur.forEach(x => {
+                    html += `<li>${x.feuille} ligne ${x.ligne} (${x.id}) : ${x.erreur}</li>`;
+                });
+                html += '</ul>';
+            }
+
+            if (r.avertissements.length) {
+                html += `<details><summary>${r.avertissements.length} avertissement(s) (cliquer pour afficher)</summary><ul>`;
+                r.avertissements.forEach(a => {
+                    html += `<li>${a}</li>`;
+                });
+                html += '</ul></details>';
+            }
+
+            resultDiv.innerHTML = html;
+        });
+    </script>
+    {% endif %}
+{% endblock %}

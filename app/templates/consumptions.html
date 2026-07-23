@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+
+{% block title %}Consommations{% endblock %}
+{% block page_title %}Consommations{% endblock %}
+
+{% block content %}
+    <p class="page-lead">Uniquement pour les sources gaz (pression) ou liquide (masse) dont la quantité est suivie (calculée, ou renseignée via une quantité initiale). Enregistrer une consommation diminue automatiquement la quantité restante affichée sur la source.</p>
+
+    {% if current_user and current_user.role.value != "lecteur" %}
+    <div class="actions-row">
+        <button class="primary" onclick="openCreateModal()">+ Enregistrer une consommation</button>
+    </div>
+    {% endif %}
+
+    <table id="consumptionsTable">
+        <thead>
+            <tr>
+                <th data-sort-key="id" data-sort-type="number">ID</th>
+                <th data-sort-key="source" data-sort-type="text">Source</th>
+                <th data-sort-key="quantite" data-sort-type="number">Quantité Utilisée</th>
+                <th data-sort-key="activite" data-sort-type="number">Activité utilisée</th>
+                <th data-sort-key="date" data-sort-type="text">Date</th>
+                <th data-sort-key="commentaire" data-sort-type="text">Commentaire</th>
+                {% if current_user and current_user.role.value != "lecteur" %}
+                <th>Actions</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for consumption in consumptions %}
+            <tr data-sort-id="{{ consumption.id }}"
+                data-sort-source="{{ consumption.source_id }}"
+                data-sort-quantite="{{ consumption.quantite_utilisee }}"
+                data-sort-activite="{{ consumption.activite_utilisee_bq if consumption.activite_utilisee_bq is not none else '' }}"
+                data-sort-date="{{ consumption.timestamp.isoformat() if consumption.timestamp else '' }}"
+                data-sort-commentaire="{{ consumption.commentaire if consumption.commentaire else '' }}">
+                <td>{{ consumption.id }}</td>
+                <td class="table-id">{{ consumption.source_id }}</td>
+                <td class="mono">{{ consumption.quantite_utilisee_affichee }}{% if consumption.quantite_utilisee == 0 %} (pesée de contrôle){% endif %}</td>
+                <td class="mono">{{ consumption.activite_utilisee_affichee if consumption.activite_utilisee_affichee else "—" }}</td>
+                <td class="mono">{{ consumption.timestamp }}</td>
+                <td>{{ consumption.commentaire if consumption.commentaire else "—" }}</td>
+                {% if current_user and current_user.role.value != "lecteur" %}
+                <td class="actions-cell">
+                    <button onclick="openEditModal({{ consumption.id }})">Modifier</button>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="empty-state" id="emptyState" style="display:{{ 'block' if not consumptions else 'none' }};">
+        <h3>Aucune consommation enregistrée</h3>
+        <p>Utilise le bouton ci-dessus pour en enregistrer une, sur une source gaz ou liquide.</p>
+    </div>
+
+    <script>
+        rendreTableTriable('consumptionsTable');
+        rendrePaginable('consumptionsTable');
+        rendreFiltrable('consumptionsTable', { placeholder: '🔎 Rechercher (source, commentaire...)' });
+    </script>
+
+    {% if current_user and current_user.role.value != "lecteur" %}
+    <!-- Pop-up : enregistrer une consommation -->
+    <div class="modal-overlay" id="consumptionModal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <h3>Enregistrer une consommation</h3>
+            {% if sources_consommables %}
+            <form id="consumptionForm">
+                <label for="source_id">Source (tape pour rechercher) :</label>
+                <input type="text" id="source_id" list="sourcesDatalist" required oninput="updateRemaining()" autocomplete="off" placeholder="ex : SCA-001">
+                <datalist id="sourcesDatalist">
+                    {% for s in sources_consommables %}
+                    <option value="{{ s.id }}">{{ s.id }} ({{ s.etat_physique.value }}{{ " - MN" if s.matiere_nucleaire else "" }})</option>
+                    {% endfor %}
+                </datalist>
+                <p class="hint" id="remainingHint"></p>
+
+                <div id="modeGaz" style="display:none;">
+                    <label for="quantite_utilisee">Quantité à consommer :</label>
+                    <div class="champ-valeur-unite">
+                        <input type="number" step="any" id="quantite_utilisee" placeholder="valeur">
+                        <input type="text" id="unite_affichee" placeholder="unité" disabled>
+                    </div>
+                </div>
+
+                <div id="modeLiquide" style="display:none;">
+                    <label for="masse_avant">Masse pesée (récipient + contenu) :</label>
+                    <div class="champ-valeur-unite">
+                        <input type="number" step="any" id="masse_avant" placeholder="valeur">
+                        <input type="text" id="unite_affichee_liquide" placeholder="unité" disabled>
+                    </div>
+
+                    <label for="masse_apres">Masse pesée après un éventuel prélèvement (laisser vide si c'est une simple pesée de contrôle, sans rien prélever — ex. première pesée après réception, ou pour indiquer la quantité restante d'une source déjà utilisée depuis longtemps) :</label>
+                    <div class="champ-valeur-unite">
+                        <input type="number" step="any" id="masse_apres" placeholder="valeur (facultatif)">
+                        <input type="text" id="unite_affichee_liquide2" placeholder="unité" disabled>
+                    </div>
+                    <p class="hint">Laissée vide, la masse "après" est prise égale à la masse pesée (rien prélevé) — utile pour établir une première référence. La quantité consommée se calcule automatiquement (avant − après). Un écart avec la pesée précédente est signalé automatiquement dans le commentaire (probable évaporation), sans bloquer l'enregistrement.</p>
+                    <p class="hint"><strong>Source déjà en service depuis longtemps, jamais pesée dans l'appli ?</strong> Indique directement ta meilleure estimation de la quantité de liquide restante dans "Masse pesée" ci-dessus (masse avant), laisse "Masse après" vide : cette valeur devient la nouvelle référence, sans qu'il soit nécessaire de reconstituer l'historique des prélèvements précédents.</p>
+                </div>
+
+                <label for="commentaire">Commentaire (facultatif) :</label>
+                <input type="text" id="commentaire">
+
+                <button type="submit" class="primary">Enregistrer</button>
+            </form>
+
+            <script>
+                const stocksSources = {{ sources_consommables_json | safe }};
+
+                function updateRemaining() {
+                    const sourceId = document.getElementById('source_id').value;
+                    const hint = document.getElementById('remainingHint');
+                    const modeGaz = document.getElementById('modeGaz');
+                    const modeLiquide = document.getElementById('modeLiquide');
+
+                    if (sourceId && stocksSources[sourceId]) {
+                        const info = stocksSources[sourceId];
+                        hint.textContent = `Quantité restante actuellement : ${info.quantite} ${info.unite}`;
+
+                        const estLiquide = info.etat_physique === 'liquide';
+                        modeGaz.style.display = estLiquide ? 'none' : 'block';
+                        modeLiquide.style.display = estLiquide ? 'block' : 'none';
+                        document.getElementById('quantite_utilisee').required = !estLiquide;
+                        document.getElementById('masse_avant').required = estLiquide;
+
+                        document.getElementById('unite_affichee').value = info.unite;
+                        document.getElementById('unite_affichee_liquide').value = info.unite;
+                        document.getElementById('unite_affichee_liquide2').value = info.unite;
+                    } else {
+                        hint.textContent = '';
+                        modeGaz.style.display = 'none';
+                        modeLiquide.style.display = 'none';
+                    }
+                }
+
+                document.getElementById('consumptionForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const sourceId = document.getElementById('source_id').value;
+                    // Le champ est maintenant un texte libre avec suggestions
+                    // (datalist), pas un menu déroulant forçant un choix
+                    // valide -- on vérifie donc explicitement que le texte
+                    // tapé correspond bien à une source connue avant de
+                    // continuer, plutôt que de laisser passer une saisie
+                    // approximative jusqu'au serveur.
+                    if (!stocksSources[sourceId]) {
+                        alert(`"${sourceId}" ne correspond à aucune source gaz/liquide connue. Choisis une suggestion dans la liste.`);
+                        return;
+                    }
+                    const estLiquide = stocksSources[sourceId] && stocksSources[sourceId].etat_physique === 'liquide';
+
+                    const payload = {
+                        source_id: sourceId,
+                        commentaire: document.getElementById('commentaire').value || null,
+                    };
+                    if (estLiquide) {
+                        const masseAvantVal = parseFloat(document.getElementById('masse_avant').value);
+                        const masseApresVal = document.getElementById('masse_apres').value;
+                        payload.masse_avant = masseAvantVal;
+                        // Laissé vide = pesée de contrôle, rien prélevé : la
+                        // masse "après" vaut alors la masse pesée elle-même.
+                        payload.masse_apres = masseApresVal ? parseFloat(masseApresVal) : masseAvantVal;
+                    } else {
+                        payload.quantite_utilisee = parseFloat(document.getElementById('quantite_utilisee').value);
+                    }
+
+                    const response = await fetch('/consumptions/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+                    if (response.ok) {
+                        window.location.reload();
+                    } else if (response.status === 401) {
+                        window.location.href = '/auth/login';
+                    } else {
+                        const error = await response.json();
+                        alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+                    }
+                });
+            </script>
+            {% else %}
+            <p class="text-muted">Aucune source gaz ou liquide avec une quantité connue (calculée ou initiale) n'est disponible pour le moment.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Pop-up : modifier une consommation/pesée existante -->
+    <div class="modal-overlay" id="editConsumptionModal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="closeEditModal()">&times;</button>
+            <h3>Corriger une consommation</h3>
+            <p class="hint">Pour corriger une erreur de saisie. Chaque modification reste tracée dans l'audit.</p>
+            <form id="editConsumptionForm">
+                <label for="edit_masse_avant">Masse avant :</label>
+                <input type="number" step="any" id="edit_masse_avant">
+
+                <label for="edit_masse_apres">Masse après :</label>
+                <input type="number" step="any" id="edit_masse_apres">
+
+                <label for="edit_quantite_utilisee">Quantité utilisée (si pas de pesée avant/après, ex. source gaz) :</label>
+                <input type="number" step="any" id="edit_quantite_utilisee">
+
+                <label for="edit_commentaire">Commentaire :</label>
+                <input type="text" id="edit_commentaire">
+
+                <button type="submit" class="primary">Enregistrer la correction</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function openCreateModal(preselectionnerSourceId) {
+            const form = document.getElementById('consumptionForm');
+            if (form) form.reset();
+            const hint = document.getElementById('remainingHint');
+            if (hint) hint.textContent = '';
+            document.getElementById('consumptionModal').classList.add('open');
+            if (preselectionnerSourceId && stocksSources[preselectionnerSourceId]) {
+                document.getElementById('source_id').value = preselectionnerSourceId;
+                updateRemaining();
+            }
+        }
+        function closeModal() {
+            document.getElementById('consumptionModal').classList.remove('open');
+        }
+
+        const consumptionsData = {{ consumptions_json | safe }};
+        let editingConsumptionId = null;
+
+        // Arrivée depuis la page Sources (bouton "Consommer" sur une
+        // source précise, ?source=XXX) : ouvre directement la pop-up,
+        // déjà sur la bonne source -- demandé le 14/07/2026, pour éviter
+        // de rechercher la source dans un long menu déroulant.
+        (function preselectionDepuisUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const sourceId = params.get('source');
+            if (sourceId) openCreateModal(sourceId);
+        })();
+
+        function openEditModal(id) {
+            editingConsumptionId = id;
+            const c = consumptionsData[id] || {};
+            document.getElementById('edit_masse_avant').value = c.masse_avant ?? '';
+            document.getElementById('edit_masse_apres').value = c.masse_apres ?? '';
+            document.getElementById('edit_quantite_utilisee').value = (c.masse_avant == null && c.masse_apres == null) ? (c.quantite_utilisee ?? '') : '';
+            document.getElementById('edit_commentaire').value = c.commentaire || '';
+            document.getElementById('editConsumptionModal').classList.add('open');
+        }
+        function closeEditModal() {
+            document.getElementById('editConsumptionModal').classList.remove('open');
+        }
+
+        document.getElementById('editConsumptionForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = {};
+            const masseAvantVal = document.getElementById('edit_masse_avant').value;
+            const masseApresVal = document.getElementById('edit_masse_apres').value;
+            const quantiteVal = document.getElementById('edit_quantite_utilisee').value;
+            if (masseAvantVal !== '') payload.masse_avant = parseFloat(masseAvantVal);
+            if (masseApresVal !== '') payload.masse_apres = parseFloat(masseApresVal);
+            if (quantiteVal !== '') payload.quantite_utilisee = parseFloat(quantiteVal);
+            payload.commentaire = document.getElementById('edit_commentaire').value || null;
+
+            const response = await fetch(`/consumptions/${editingConsumptionId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (response.ok) {
+                window.location.reload();
+            } else if (response.status === 401) {
+                window.location.href = '/auth/login';
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        });
+    </script>
+    {% endif %}
+{% endblock %}

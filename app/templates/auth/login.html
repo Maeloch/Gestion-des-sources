@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Connexion{% endblock %}
+
+{% block auth_content %}
+    <div class="auth-card">
+        <div class="auth-brand">
+            <svg width="28" height="28" viewBox="0 0 30 30" fill="none">
+                <path d="M2 24 C 10 24, 10 6, 15 6 C 20 6, 20 24, 28 24" stroke="#1c8c8c" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="15" cy="6" r="2.2" fill="#1c8c8c"/>
+            </svg>
+            <span class="auth-brand-text">Sources Radioactives</span>
+        </div>
+        <h2>Connexion</h2>
+        <p class="page-lead">Accède à ton espace de gestion des sources.</p>
+        <form id="loginForm">
+            <label for="username">Nom d'utilisateur</label>
+            <input type="text" id="username" name="username" required>
+
+            <label for="password">Mot de passe</label>
+            <input type="password" id="password" name="password" required>
+
+            <button type="submit" class="primary">Se connecter</button>
+        </form>
+        <p class="auth-foot">Pas encore de compte ? <a href="/auth/register">S'inscrire</a></p>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const response = await fetch('/auth/token', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (response.ok) {
+                window.location.href = '/';
+            } else {
+                let message = 'Nom d\'utilisateur ou mot de passe incorrect.';
+                try {
+                    const error = await response.json();
+                    message = error.detail || message;
+                } catch (err) {}
+                alert(`Erreur : ${message}`);
+            }
+        });
+    </script>
+{% endblock %}

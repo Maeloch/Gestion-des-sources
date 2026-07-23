@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block title %}Mouvements{% endblock %}
+{% block page_title %}Mouvements{% endblock %}
+
+{% block content %}
+    <p class="page-lead">Un emprunt correspond à la sortie d'une source d'un lieu vers un autre. Tant qu'aucune date de retour réelle n'est renseignée, la source est considérée comme "sortie". Pour les sources liquides qui restent définitivement dans ton labo une fois ouvertes, il suffit de ne jamais marquer de retour.</p>
+
+    {% if current_user.role.value != "lecteur" %}
+    <div class="actions-row">
+        <button class="primary" onclick="openCreateModal()">+ Démarrer un emprunt</button>
+        <button onclick="openAddLocationModal()">+ Lieu</button>
+        <a href="/locations" style="align-self:center;font-size:0.85rem;">Gérer tous les lieux →</a>
+    </div>
+    {% endif %}
+
+    <table id="movementsTable">
+        <thead>
+            <tr>
+                <th data-sort-key="source" data-sort-type="text">Source</th>
+                <th data-sort-key="de" data-sort-type="text">De</th>
+                <th data-sort-key="vers" data-sort-type="text">Vers</th>
+                <th data-sort-key="sortie" data-sort-type="text">Date de sortie</th>
+                <th data-sort-key="prevu" data-sort-type="text">Retour prévu</th>
+                <th data-sort-key="reel" data-sort-type="text">Retour réel</th>
+                <th data-sort-key="commentaire" data-sort-type="text">Commentaire</th>
+                <th data-sort-key="par" data-sort-type="text">Par</th>
+                {% if current_user.role.value != "lecteur" %}
+                <th>Actions</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in movements %}
+            <tr data-sort-source="{{ m.source_id }}"
+                data-sort-de="{{ m.from_location.nom if m.from_location else '' }}"
+                data-sort-vers="{{ m.to_location.nom if m.to_location else '' }}"
+                data-sort-sortie="{{ m.timestamp.isoformat() if m.timestamp else '' }}"
+                data-sort-prevu="{{ m.date_retour_prevue if m.date_retour_prevue else '' }}"
+                data-sort-reel="{{ m.date_retour_reelle if m.date_retour_reelle else '' }}"
+                data-sort-commentaire="{{ m.commentaire if m.commentaire else '' }}"
+                data-sort-par="{{ m.utilisateur if m.utilisateur else '' }}">
+                <td class="table-id">{{ m.source_id }}</td>
+                <td>{{ m.from_location.nom if m.from_location else "—" }}</td>
+                <td>{{ m.to_location.nom if m.to_location else "—" }}</td>
+                <td class="mono">{{ m.timestamp.strftime("%Y-%m-%d") if m.timestamp else "" }}</td>
+                <td class="mono">{{ m.date_retour_prevue if m.date_retour_prevue else "—" }}</td>
+                <td>{% if m.date_retour_reelle %}<span class="mono">{{ m.date_retour_reelle }}</span>{% else %}<span class="badge badge-active">en cours</span>{% endif %}</td>
+                <td>{{ m.commentaire if m.commentaire else "" }}</td>
+                <td>{{ m.utilisateur if m.utilisateur else "" }}</td>
+                {% if current_user.role.value != "lecteur" %}
+                <td class="actions-cell">
+                    {% if not m.date_retour_reelle %}
+                    <button data-source-id="{{ m.source_id }}" onclick="openRetourModal({{ m.id }}, this.dataset.sourceId)">Marquer retourné</button>
+                    {% endif %}
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <script>
+        rendreTableTriable('movementsTable');
+        rendrePaginable('movementsTable');
+        rendreFiltrable('movementsTable', { placeholder: '🔎 Rechercher (source, lieu, commentaire...)' });
+    </script>
+
+    {% if current_user.role.value != "lecteur" %}
+    <!-- Pop-up : démarrer un emprunt -->
+    <div class="modal-overlay" id="movementModal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <h3>Démarrer un emprunt</h3>
+            {% if sources_disponibles %}
+            <form id="movementForm">
+                <label for="source_id">Source (seules celles sans emprunt en cours sont proposées) :</label>
+                <select id="source_id" required>
+                    <option value="">-- Choisir une source --</option>
+                    {% for s in sources_disponibles %}
+                    <option value="{{ s.id }}">{{ s.id }}{{ " - MN" if s.matiere_nucleaire else "" }} (lieu habituel : {{ s.emplacement_habituel.nom }})</option>
+                    {% endfor %}
+                </select>
+
+                <label for="to_location_id">Vers quel lieu :</label>
+                <select id="to_location_id" required>
+                    <option value="">-- Choisir un lieu --</option>
+                    {% for l in locations %}
+                    <option value="{{ l.id }}">{{ l.nom }}{{ " (" ~ l.site ~ ")" if l.site else "" }}</option>
+                    {% endfor %}
+                </select>
+
+                <label for="date_retour_prevue">Date de retour prévue (facultatif) :</label>
+                <input type="date" id="date_retour_prevue">
+
+                <label for="commentaire">Commentaire (facultatif) :</label>
+                <input type="text" id="commentaire">
+
+                <button type="submit" class="primary">Enregistrer la sortie</button>
+            </form>
+            {% else %}
+            <p class="text-muted">Aucune source disponible : soit il n'y a pas encore de source avec un lieu habituel défini (pop-up de modification d'une source), soit toutes celles auxquelles tu as accès sont déjà sorties.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Pop-up : marquer un retour -->
+    <div class="modal-overlay" id="retourModal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="closeRetourModal()">&times;</button>
+            <h3 id="retourModalTitle">Marquer comme retournée</h3>
+            <form id="retourForm">
+                <label for="date_retour_reelle">Date de retour (par défaut : aujourd'hui) :</label>
+                <input type="date" id="date_retour_reelle">
+
+                <label for="retour_commentaire">Commentaire (facultatif) :</label>
+                <input type="text" id="retour_commentaire">
+
+                <button type="submit" class="primary">Confirmer le retour</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Pop-up : ajouter un lieu (rapide) -->
+    <div class="modal-overlay" id="addLocationModal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="closeAddLocationModal()">&times;</button>
+            <h3>Ajouter un lieu</h3>
+            <form id="addLocationForm">
+                <label for="loc_nom">Nom (ex : "Armoire des sources", "Labo EPICEA") :</label>
+                <input type="text" id="loc_nom" required>
+
+                <label for="loc_site">Site / Service (ex : "IRMA", "EPICEA") :</label>
+                <input type="text" id="loc_site">
+
+                <label for="loc_batiment">Bâtiment (facultatif) :</label>
+                <input type="text" id="loc_batiment">
+
+                <label for="loc_piece">Pièce (facultatif) :</label>
+                <input type="text" id="loc_piece">
+
+                <button type="submit" class="primary">Ajouter</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let currentMovementId = null;
+
+        function openCreateModal() { document.getElementById('movementModal').classList.add('open'); }
+        function closeModal() { document.getElementById('movementModal').classList.remove('open'); }
+
+        function openRetourModal(movementId, sourceId) {
+            currentMovementId = movementId;
+            document.getElementById('retourModalTitle').textContent = `Marquer "${sourceId}" comme retournée`;
+            document.getElementById('retourForm').reset();
+            document.getElementById('retourModal').classList.add('open');
+        }
+        function closeRetourModal() { document.getElementById('retourModal').classList.remove('open'); }
+
+        function openAddLocationModal() {
+            document.getElementById('addLocationForm').reset();
+            document.getElementById('addLocationModal').classList.add('open');
+        }
+        function closeAddLocationModal() { document.getElementById('addLocationModal').classList.remove('open'); }
+
+        const movementFormEl = document.getElementById('movementForm');
+        if (movementFormEl) {
+            movementFormEl.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const payload = {
+                    source_id: document.getElementById('source_id').value,
+                    to_location_id: parseInt(document.getElementById('to_location_id').value),
+                    date_retour_prevue: document.getElementById('date_retour_prevue').value || null,
+                    commentaire: document.getElementById('commentaire').value || null,
+                };
+                const response = await fetch('/movements/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                if (response.ok) {
+                    window.location.reload();
+                } else if (response.status === 401) {
+                    window.location.href = '/auth/login';
+                } else {
+                    const error = await response.json();
+                    alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+                }
+            });
+        }
+
+        document.getElementById('retourForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = {
+                date_retour_reelle: document.getElementById('date_retour_reelle').value || null,
+                commentaire: document.getElementById('retour_commentaire').value || null,
+            };
+            const response = await fetch(`/movements/${currentMovementId}/retour`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (response.ok) {
+                window.location.reload();
+            } else if (response.status === 401) {
+                window.location.href = '/auth/login';
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        });
+
+        document.getElementById('addLocationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = {
+                nom: document.getElementById('loc_nom').value,
+                site: document.getElementById('loc_site').value || null,
+                batiment: document.getElementById('loc_batiment').value || null,
+                piece: document.getElementById('loc_piece').value || null,
+            };
+            const response = await fetch('/locations/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (response.ok) {
+                window.location.reload();
+            } else if (response.status === 401) {
+                window.location.href = '/auth/login';
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        });
+    </script>
+    {% endif %}
+{% endblock %}

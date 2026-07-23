@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Lieux{% endblock %}
+{% block page_title %}Lieux{% endblock %}
+
+{% block content %}
+    {% if current_user and current_user.role.value != "lecteur" %}
+    <div class="actions-row">
+        <button class="primary" onclick="openCreateModal()">+ Ajouter un lieu</button>
+    </div>
+    {% endif %}
+
+    <table id="locationsTable">
+        <thead>
+            <tr>
+                <th data-sort-key="nom" data-sort-type="text">Nom</th>
+                <th data-sort-key="site" data-sort-type="text">Site / Service</th>
+                <th data-sort-key="batiment" data-sort-type="text">Bâtiment</th>
+                <th data-sort-key="piece" data-sort-type="text">Pièce</th>
+                <th data-sort-key="description" data-sort-type="text">Description</th>
+                {% if current_user and current_user.role.value != "lecteur" %}
+                <th>Actions</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for location in locations %}
+            <tr data-sort-nom="{{ location.nom }}"
+                data-sort-site="{{ location.site if location.site else '' }}"
+                data-sort-batiment="{{ location.batiment if location.batiment else '' }}"
+                data-sort-piece="{{ location.piece if location.piece else '' }}"
+                data-sort-description="{{ location.description if location.description else '' }}">
+                <td>{{ location.nom }}</td>
+                <td>{{ location.site if location.site else "" }}</td>
+                <td>{{ location.batiment if location.batiment else "" }}</td>
+                <td>{{ location.piece if location.piece else "" }}</td>
+                <td>{{ location.description if location.description else "" }}</td>
+                {% if current_user and current_user.role.value != "lecteur" %}
+                <td class="actions-cell">
+                    <button onclick="openEditModal({{ location.id }})">Modifier</button>
+                    <button data-nom="{{ location.nom }}" onclick="deleteLocation({{ location.id }}, this.dataset.nom)">Supprimer</button>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <script>
+        rendreTableTriable('locationsTable');
+        rendrePaginable('locationsTable');
+        rendreFiltrable('locationsTable', { placeholder: '🔎 Rechercher (nom, site...)' });
+    </script>
+
+    {% if current_user and current_user.role.value != "lecteur" %}
+    <div class="modal-overlay" id="locationModal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <h3 id="locationModalTitle">Ajouter un lieu</h3>
+            <form id="locationForm">
+                <label for="nom">Nom (ex : "Armoire des sources", "Labo EPICEA") :</label>
+                <input type="text" id="nom" required>
+                <p class="hint">Astuce : renommer un lieu vers un nom déjà utilisé par un autre lieu propose de les fusionner (toutes les sources et mouvements sont réaffectés).</p>
+
+                <label for="site">Site / Service (ex : "IRMA", "EPICEA") :</label>
+                <input type="text" id="site">
+
+                <label for="batiment">Bâtiment (facultatif) :</label>
+                <input type="text" id="batiment">
+
+                <label for="piece">Pièce (facultatif) :</label>
+                <input type="text" id="piece">
+
+                <label for="description">Description (facultatif) :</label>
+                <input type="text" id="description">
+
+                <button type="submit" class="primary">Enregistrer</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const locationsData = {
+            {% for loc in locations %}
+            {{ loc.id }}: {
+                nom: {{ loc.nom | tojson }},
+                site: {{ loc.site | tojson }},
+                batiment: {{ loc.batiment | tojson }},
+                piece: {{ loc.piece | tojson }},
+                description: {{ loc.description | tojson }},
+            },
+            {% endfor %}
+        };
+
+        let editingLocationId = null;
+
+        function openCreateModal() {
+            editingLocationId = null;
+            document.getElementById('locationModalTitle').textContent = 'Ajouter un lieu';
+            document.getElementById('locationForm').reset();
+            document.getElementById('locationModal').classList.add('open');
+        }
+
+        function openEditModal(locationId) {
+            const l = locationsData[locationId];
+            if (!l) return;
+            editingLocationId = locationId;
+            document.getElementById('locationModalTitle').textContent = `Modifier le lieu "${l.nom}"`;
+            document.getElementById('nom').value = l.nom || '';
+            document.getElementById('site').value = l.site || '';
+            document.getElementById('batiment').value = l.batiment || '';
+            document.getElementById('piece').value = l.piece || '';
+            document.getElementById('description').value = l.description || '';
+            document.getElementById('locationModal').classList.add('open');
+        }
+
+        function closeModal() {
+            document.getElementById('locationModal').classList.remove('open');
+        }
+
+        async function deleteLocation(locationId, nom) {
+            if (!confirm(`Supprimer définitivement le lieu "${nom}" ?`)) return;
+            const response = await fetch(`/locations/${locationId}`, { method: 'DELETE' });
+            if (response.ok) {
+                window.location.reload();
+            } else if (response.status === 401) {
+                window.location.href = '/auth/login';
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        }
+
+        document.getElementById('locationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await soumettreLocation(false);
+        });
+
+        async function soumettreLocation(confirmerFusion) {
+            const payload = {
+                nom: document.getElementById('nom').value,
+                site: document.getElementById('site').value || null,
+                batiment: document.getElementById('batiment').value || null,
+                piece: document.getElementById('piece').value || null,
+                description: document.getElementById('description').value || null,
+                confirmer_fusion: confirmerFusion,
+            };
+
+            let response;
+            if (editingLocationId) {
+                response = await fetch(`/locations/${editingLocationId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+            } else {
+                response = await fetch('/locations/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+            }
+
+            if (response.ok) {
+                window.location.reload();
+            } else if (response.status === 401) {
+                window.location.href = '/auth/login';
+            } else if (response.status === 409) {
+                // Renommer un lieu vers un nom déjà pris par un autre :
+                // le backend propose une fusion plutôt qu'une erreur brute.
+                const error = await response.json();
+                if (confirm(`${error.detail}\n\nConfirmer la fusion ?`)) {
+                    await soumettreLocation(true);
+                }
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        }
+    </script>
+    {% endif %}
+{% endblock %}

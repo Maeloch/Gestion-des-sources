@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Utilisateurs{% endblock %}
+{% block page_title %}Utilisateurs &amp; rôles{% endblock %}
+
+{% block content %}
+    <p class="page-lead">Réservé aux administrateurs. Tu ne peux pas modifier ton propre rôle ni supprimer ton propre compte depuis cette page (demande à un autre administrateur si besoin) — c'est volontaire, pour éviter de te retrouver bloqué·e dehors par erreur.</p>
+
+    <div class="card">
+    <h3 class="mt-0">Les 4 rôles</h3>
+    <ul>
+        <li><strong>Administrateur</strong> : accès complet, y compris cette page de gestion des utilisateurs.</li>
+        <li><strong>Utilisateur MN</strong> : peut créer/modifier/consommer, y compris les sources contenant de la Matière Nucléaire.</li>
+        <li><strong>Utilisateur</strong> : comme Utilisateur MN, mais aucun accès (même en lecture) aux sources Matière Nucléaire.</li>
+        <li><strong>Lecteur</strong> : consultation uniquement (aucune création/modification/consommation/suppression), et aucun accès aux sources Matière Nucléaire.</li>
+    </ul>
+    </div>
+
+    {% if demandes_en_attente %}
+    <div class="card">
+    <h3 class="mt-0">Demandes de rôle en attente ({{ demandes_en_attente | length }})</h3>
+    <table id="demandesTable">
+        <thead>
+            <tr>
+                <th>Utilisateur</th>
+                <th>Rôle demandé</th>
+                <th>Message</th>
+                <th>Date de la demande</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in demandes_en_attente %}
+            <tr>
+                <td>{{ d.username }}</td>
+                <td>{{ d.role_demande.value }}</td>
+                <td>{{ d.commentaire if d.commentaire else "—" }}</td>
+                <td class="mono">{{ d.date_demande.strftime("%Y-%m-%d %H:%M") if d.date_demande else "" }}</td>
+                <td class="actions-cell">
+                    <button class="primary" onclick="traiterDemande({{ d.id }}, 'approuver')">Approuver</button>
+                    <button class="danger" onclick="traiterDemande({{ d.id }}, 'rejeter')">Rejeter</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% endif %}
+
+    <div class="card">
+
+    <table>
+        <thead>
+            <tr>
+                <th>Nom d'utilisateur</th>
+                <th>Nom complet</th>
+                <th>Email</th>
+                <th>Rôle</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="usersTableBody">
+            {% for u in users %}
+            <tr data-user-id="{{ u.id }}">
+                <td>{{ u.username }}</td>
+                <td>{{ u.full_name }}</td>
+                <td>{{ u.email }}</td>
+                {% if current_user and u.id == current_user.id %}
+                <td>{{ u.role.value }}</td>
+                <td>(toi-même)</td>
+                {% else %}
+                <td>
+                    <select id="role-select-{{ u.id }}">
+                        <option value="admin" {{ "selected" if u.role.value == "admin" else "" }}>Administrateur</option>
+                        <option value="utilisateur_mn" {{ "selected" if u.role.value == "utilisateur_mn" else "" }}>Utilisateur MN</option>
+                        <option value="utilisateur" {{ "selected" if u.role.value == "utilisateur" else "" }}>Utilisateur</option>
+                        <option value="lecteur" {{ "selected" if u.role.value == "lecteur" else "" }}>Lecteur</option>
+                    </select>
+                </td>
+                <td>
+                    <button onclick="changeRole({{ u.id }})">Valider le rôle</button>
+                    <button onclick="deleteUser({{ u.id }}, '{{ u.username }}')">Supprimer</button>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+
+    <script>
+        async function changeRole(userId) {
+            const select = document.getElementById(`role-select-${userId}`);
+            const response = await fetch(`/users/${userId}/role`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ role: select.value }),
+            });
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        }
+
+        async function deleteUser(userId, username) {
+            if (!confirm(`Supprimer définitivement le compte "${username}" ?`)) {
+                return;
+            }
+            const response = await fetch(`/users/${userId}`, { method: 'DELETE' });
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        }
+
+        async function traiterDemande(demandeId, action) {
+            const libelle = action === 'approuver' ? 'approuver' : 'rejeter';
+            if (!confirm(`Confirmer : ${libelle} cette demande ?`)) return;
+            const response = await fetch(`/users/demandes-role/${demandeId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action }),
+            });
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        }
+    </script>
+{% endblock %}

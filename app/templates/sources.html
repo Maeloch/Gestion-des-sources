@@ -1,0 +1,711 @@
+{% extends "base.html" %}
+{% import "_macros.html" as macros %}
+
+{% block title %}Sources Radioactives{% endblock %}
+{% block page_title %}Sources{% endblock %}
+
+{% block content %}
+    {% set etats_archives = ["remisée", "en déchet", "transférée", "détruite"] %}
+
+    <div class="actions-row" style="justify-content:space-between; flex-wrap:wrap; gap:0.6rem;">
+        <div class="filter-menu" style="display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
+            <input type="text" id="searchId" placeholder="Rechercher un identifiant (ex : SCA-)" style="width:auto; min-width:220px;">
+            <select id="filterRadionuclide" style="width:auto;">
+                <option value="">-- Tous les radionucléides --</option>
+                {% for nom in radionuclides_distincts %}
+                <option value="{{ nom }}">{{ nom }}</option>
+                {% endfor %}
+            </select>
+            <button id="filterBtn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+                Filtrer <span id="filterCount" class="mono text-muted"></span>
+            </button>
+            <div class="filter-panel" id="filterPanel">
+                <label><input type="checkbox" class="statusFilter" value="en utilisation" checked> En utilisation</label>
+                <label><input type="checkbox" class="statusFilter" value="en attente" checked> En attente</label>
+                <hr>
+                <label><input type="checkbox" class="statusFilter" value="remisée"> Remisée</label>
+                <label><input type="checkbox" class="statusFilter" value="en déchet"> En déchet</label>
+                <label><input type="checkbox" class="statusFilter" value="transférée"> Transférée</label>
+                <label><input type="checkbox" class="statusFilter" value="détruite"> Détruite</label>
+                <div class="filter-actions">
+                    <button type="button" id="filterAll">Tout cocher</button>
+                    <button type="button" id="filterReset">Réinitialiser</button>
+                </div>
+            </div>
+        </div>
+
+        {% if current_user.role.value != "lecteur" %}
+        <div class="actions-row" style="margin:0;">
+            <button onclick="openCreateModal()">+ Ajouter une source</button>
+            <button onclick="openAddRnModal()">+ Ajouter un radionucléide</button>
+            <button onclick="openAddLocationModal()">+ Lieu</button>
+            <button onclick="document.getElementById('certificatFileInput').click()">Importer depuis un certificat (PDF)</button>
+            <input type="file" id="certificatFileInput" accept="application/pdf" style="display:none;" onchange="importerDepuisCertificat(this.files[0])">
+        </div>
+        {% endif %}
+    </div>
+    <p class="page-lead mt-0"><a href="/radionuclides">Gérer tous les radionucléides →</a></p>
+
+    <div class="tabs">
+        <button class="tab active" data-tab="scellee">Scellées <span class="count" data-count="scellee"></span></button>
+        <button class="tab" data-tab="consommable">Consommables <span class="count" data-count="consommable"></span></button>
+        <button class="tab" data-tab="non-scellee">Non scellées <span class="count" data-count="non-scellee"></span></button>
+    </div>
+
+    <table id="sourcesTable">
+        <thead>
+            <tr>
+                <th data-sort-key="id" data-sort-type="text">ID</th>
+                <th data-sort-key="etatphysique" data-sort-type="text">État Physique</th>
+                <th data-sort-key="statut" data-sort-type="text">Statut</th>
+                <th data-sort-key="radionuclides" data-sort-type="text">Radionucléides</th>
+                <th data-sort-key="activite" data-sort-type="number">Activité actuelle</th>
+                <th data-sort-key="quantite" data-sort-type="number" class="col-quantite-restante">Quantité restante</th>
+                <th data-sort-key="datearrivee" data-sort-type="text">Date d'Arrivée</th>
+                <th data-sort-key="fournisseur" data-sort-type="text">Fournisseur</th>
+                <th data-sort-key="emplacement" data-sort-type="text">Emplacement actuel</th>
+                <th data-sort-key="mn" data-sort-type="text">MN</th>
+                {% if current_user.role.value != "lecteur" %}
+                <th>Actions</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for source in sources %}
+            {% set archivee = source.etat_utilisation.value in etats_archives %}
+            {% if source.type.value == "scellée" %}{% set tab = "scellee" %}
+            {% elif source.etat_physique.value in ("gaz", "liquide") %}{% set tab = "consommable" %}
+            {% else %}{% set tab = "non-scellee" %}{% endif %}
+            {% set qte_affichee = source.quantite_calculee if source.quantite_calculee is not none else source.quantite %}
+            {% set noms_rn = source.radionuclides | map(attribute="nom") | join(", ") %}
+            <tr data-tab="{{ tab }}" data-etat="{{ source.etat_utilisation.value }}"
+                data-sort-id="{{ source.id }}"
+                data-sort-etatphysique="{{ source.etat_physique.value if source.etat_physique else '' }}"
+                data-sort-statut="{{ source.etat_utilisation.value }}"
+                data-sort-radionuclides="{{ noms_rn }}"
+                data-sort-activite="{{ source.activite_max_bq if source.activite_max_bq is not none else '' }}"
+                data-sort-quantite="{{ qte_affichee if (source.etat_physique.value in ('gaz', 'liquide') and qte_affichee is not none) else '' }}"
+                data-sort-datearrivee="{{ source.date_arrivee }}"
+                data-sort-fournisseur="{{ source.fournisseur or '' }}"
+                data-sort-emplacement="{{ source.emplacement_actuel.nom if source.emplacement_actuel else '' }}"
+                data-sort-mn="{{ 'Oui' if source.matiere_nucleaire else 'Non' }}">
+                <td class="table-id">{{ source.id }}</td>
+                <td>{{ macros.etat_physique_badge(source.etat_physique.value if source.etat_physique else None) }}</td>
+                <td>
+                    {% if archivee %}<span class="badge badge-archived">{{ source.etat_utilisation.value }}</span>
+                    {% else %}<span class="badge badge-active">{{ source.etat_utilisation.value }}</span>{% endif %}
+                </td>
+                <td>
+                    {% for rn in source.radionuclides %}
+                    <div class="mono" style="white-space:nowrap;">{{ rn.nom }}</div>
+                    {% else %}—
+                    {% endfor %}
+                </td>
+                <td class="mono">
+                    {% for rn in source.radionuclides %}
+                    <div style="white-space:nowrap;">{{ rn.activite_actuelle_affichee if rn.activite_actuelle_affichee else "—" }}</div>
+                    {% else %}—
+                    {% endfor %}
+                </td>
+                <td class="mono col-quantite-restante">
+                    {% if source.etat_physique.value in ("gaz", "liquide") and qte_affichee is not none %}
+                        {{ arrondir_scientifique(qte_affichee) }} {{ source.unite_quantite.value if source.unite_quantite else "" }}
+                    {% else %}—{% endif %}
+                </td>
+                <td>{{ source.date_arrivee }}</td>
+                <td>{{ source.fournisseur if source.fournisseur else "—" }}</td>
+                <td>{{ source.emplacement_actuel.nom if source.emplacement_actuel else "—" }}</td>
+                <td>{% if source.matiere_nucleaire %}<span class="badge badge-mn">MN</span>{% endif %}</td>
+                {% if current_user.role.value != "lecteur" %}
+                <td class="actions-cell">
+                    {% if not archivee or current_user.role.value == "admin" %}
+                    <button onclick="openEditModal('{{ source.id }}')">Modifier</button>
+                    {% endif %}
+                    {% if source.etat_physique.value in ("gaz", "liquide") and not archivee %}
+                    <a href="/consumptions?source={{ source.id }}"><button type="button">Consommer</button></a>
+                    {% endif %}
+                    <button class="danger" onclick="deleteSource('{{ source.id }}')">Supprimer</button>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="empty-state" id="emptyState" style="display:none;">
+        <h3>Aucune source à afficher</h3>
+        <p>Essaie d'élargir le filtre de statut, ou change d'onglet.</p>
+    </div>
+
+    <script>
+        // ---- Onglets + filtre de statut + tri : accessible à tous les
+        // rôles (y compris lecteur), contrairement aux pop-up d'ajout/
+        // modification qui suivent plus bas. ----
+        const tabs = document.querySelectorAll('.tab');
+        const rows = document.querySelectorAll('#sourcesTable tbody tr');
+        let activeTab = 'scellee';
+
+        function applyFilters() {
+            const checked = Array.from(document.querySelectorAll('.statusFilter:checked')).map(c => c.value);
+            const counts = { scellee: 0, 'non-scellee': 0, consommable: 0 };
+            let visibleInTab = 0;
+            const recherche = document.getElementById('searchId').value.trim().toLowerCase();
+            const rnChoisi = document.getElementById('filterRadionuclide').value;
+
+            // La colonne "Quantité restante" n'a de sens que pour les
+            // sources gaz/liquide (onglet Consommables) -- masquée
+            // entièrement sur les deux autres onglets, demandé le
+            // 13/07/2026.
+            document.getElementById('sourcesTable').classList.toggle('masquer-quantite-restante', activeTab !== 'consommable');
+
+            rows.forEach(row => {
+                const matchesStatus = checked.includes(row.dataset.etat);
+                if (matchesStatus) counts[row.dataset.tab]++;
+                const matchesTab = row.dataset.tab === activeTab;
+                // Recherche libre sur l'identifiant : simple sous-chaîne,
+                // insensible à la casse -- couvre naturellement un
+                // préfixe ("SCA-") sans imposer une syntaxe particulière.
+                const matchesRecherche = !recherche || row.dataset.sortId.toLowerCase().includes(recherche);
+                // data-sort-radionuclides existe déjà (utilisé pour le tri) :
+                // réutilisé ici tel quel, une simple liste séparée par
+                // virgules -- pas besoin d'un attribut dédié en plus.
+                const rnDeLaLigne = (row.dataset.sortRadionuclides || '').split(',').map(s => s.trim());
+                const matchesRn = !rnChoisi || rnDeLaLigne.includes(rnChoisi);
+                const visible = matchesStatus && matchesTab && matchesRecherche && matchesRn;
+                row.dataset.filtreOk = visible ? 'true' : 'false';
+                row.style.display = visible ? '' : 'none';
+                if (visible) visibleInTab++;
+            });
+
+            document.querySelectorAll('.tab .count').forEach(el => {
+                el.textContent = counts[el.dataset.count] || 0;
+            });
+            document.getElementById('emptyState').style.display = visibleInTab === 0 ? 'block' : 'none';
+            document.getElementById('sourcesTable').style.display = visibleInTab === 0 ? 'none' : 'table';
+
+            const total = document.querySelectorAll('.statusFilter').length;
+            document.getElementById('filterCount').textContent = checked.length === total ? '' : `(${checked.length}/${total})`;
+
+            // La pagination se recalcule TOUJOURS en dernier, une fois que
+            // ce filtre a fini de positionner l'affichage de chaque ligne
+            // selon ses propres critères (onglet + statut) -- voir
+            // paginate.js pour le principe général.
+            window.PaginationRefresh && window.PaginationRefresh.sourcesTable && window.PaginationRefresh.sourcesTable();
+        }
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                activeTab = tab.dataset.tab;
+                applyFilters();
+            });
+        });
+
+        document.querySelectorAll('.statusFilter').forEach(cb => cb.addEventListener('change', applyFilters));
+        document.getElementById('searchId').addEventListener('input', applyFilters);
+        document.getElementById('filterRadionuclide').addEventListener('change', applyFilters);
+        document.getElementById('filterAll').addEventListener('click', () => {
+            document.querySelectorAll('.statusFilter').forEach(cb => cb.checked = true);
+            applyFilters();
+        });
+        document.getElementById('filterReset').addEventListener('click', () => {
+            document.querySelectorAll('.statusFilter').forEach(cb => cb.checked = (cb.value === 'en utilisation' || cb.value === 'en attente'));
+            applyFilters();
+        });
+
+        const filterBtn = document.getElementById('filterBtn');
+        const filterPanel = document.getElementById('filterPanel');
+        filterBtn.addEventListener('click', (e) => { e.stopPropagation(); filterPanel.classList.toggle('open'); });
+        document.addEventListener('click', () => filterPanel.classList.remove('open'));
+        filterPanel.addEventListener('click', (e) => e.stopPropagation());
+
+        applyFilters();
+        rendreTableTriable('sourcesTable');
+        rendrePaginable('sourcesTable');
+    </script>
+
+    {% if current_user.role.value != "lecteur" %}
+    <!-- Pop-up d'ajout / modification d'une source -->
+    <div class="modal-overlay" id="sourceModal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <h3 id="sourceModalTitle">Ajouter une source</h3>
+            <p id="certificatHint" style="display:none; background:var(--accent-dim); color:var(--accent-dark); padding:0.6rem 0.9rem; border-radius:var(--radius-sm); font-size:0.85rem; margin:0 0 0.8rem;"></p>
+            {% if not locations %}
+            <p style="background:var(--mn-gold-dim); color:var(--mn-gold); padding:0.75rem 1rem; border-radius:var(--radius-sm); margin:0;">
+                Aucun lieu n'existe encore. Crée d'abord un lieu (bouton "+ Lieu" sur cette page) avant de pouvoir ajouter une source — un lieu habituel est obligatoire pour chaque source.
+            </p>
+            {% else %}
+            <form id="sourceForm">
+                <label for="id">ID :</label>
+                <input type="text" id="id" required>
+
+                <label for="type">Type :</label>
+                <select id="type" required>
+                    <option value="scellée">Scellée</option>
+                    <option value="non-scellée">Non scellée</option>
+                </select>
+
+                <label for="etat_physique">État Physique :</label>
+                <select id="etat_physique" required>
+                    <option value="solide">Solide</option>
+                    <option value="liquide">Liquide</option>
+                    <option value="gaz">Gaz</option>
+                </select>
+
+                <label for="etat_utilisation">État d'Utilisation :</label>
+                <select id="etat_utilisation" required>
+                    <option value="en utilisation">En utilisation</option>
+                    <option value="remisée">Remisée</option>
+                    <option value="en déchet">En déchet</option>
+                    <option value="en attente">En attente</option>
+                    <option value="transférée">Transférée</option>
+                    <option value="détruite">Détruite</option>
+                </select>
+
+                <label for="date_arrivee">Date d'Arrivée :</label>
+                <input type="date" id="date_arrivee" required>
+
+                <label for="emplacement_habituel_id">Emplacement (lieu habituel de la source) :</label>
+                <select id="emplacement_habituel_id" required>
+                    <option value="">-- Choisir un lieu --</option>
+                    {% for l in locations %}
+                    <option value="{{ l.id }}">{{ l.nom }}{{ " (" ~ l.site ~ ")" if l.site else "" }}</option>
+                    {% endfor %}
+                </select>
+                <p class="hint">Lieu obligatoire — utilise "+ Lieu" ci-dessus s'il n'existe pas encore.</p>
+
+                <label for="fournisseur">Fournisseur / fabricant (facultatif) :</label>
+                <input type="text" id="fournisseur">
+
+                <label for="matiere_nucleaire">
+                    <input type="checkbox" id="matiere_nucleaire" style="width:auto;display:inline;vertical-align:middle;">
+                    Matière Nucléaire
+                </label>
+
+                <label for="quantite_initiale">Quantité initiale — masse pour un liquide, pression pour un gaz (au moment de la saisie ; la quantité restante se calcule ensuite automatiquement à partir des consommations et pesées ; laisser vide pour une source scellée) :</label>
+                <div class="champ-valeur-unite">
+                    <input type="number" step="any" id="quantite_initiale" placeholder="valeur">
+                    <select id="unite_quantite">
+                        <option value="">-- unité --</option>
+                        <option value="µg">µg</option>
+                        <option value="mg">mg</option>
+                        <option value="g">g</option>
+                        <option value="kg">kg</option>
+                        <option value="mL">mL</option>
+                        <option value="L">L</option>
+                        <option value="Pa">Pa</option>
+                        <option value="kPa">kPa</option>
+                        <option value="bar">bar</option>
+                    </select>
+                </div>
+
+                <label for="volume_recipient">Volume du récipient (facultatif — pour un liquide, en plus de sa masse ci-dessus : la masse volumique d'une solution radioactive n'est pas celle de l'eau ; pour un gaz, le volume du récipient en plus de sa pression) :</label>
+                <div class="champ-valeur-unite">
+                    <input type="number" step="any" id="volume_recipient" placeholder="valeur">
+                    <select id="unite_volume">
+                        <option value="">-- unité --</option>
+                        <option value="mL">mL</option>
+                        <option value="L">L</option>
+                    </select>
+                </div>
+
+                <label for="num_certificat_etalonnage">N° certificat d'étalonnage (facultatif) :</label>
+                <input type="text" id="num_certificat_etalonnage">
+
+                <label for="reference_catalogue">Référence catalogue (facultatif) :</label>
+                <input type="text" id="reference_catalogue">
+
+                <label for="num_source_fabricant">N° source fabricant (facultatif) :</label>
+                <input type="text" id="num_source_fabricant">
+
+                <label for="lien_dossier_admin">Lien dossier administratif (facultatif) :</label>
+                <input type="text" id="lien_dossier_admin">
+
+                <label for="commentaire">Commentaire (facultatif) :</label>
+                <input type="text" id="commentaire">
+
+                <p class="hint">La quantité restante n'est plus saisie ici : elle se calcule automatiquement à partir de l'activité du radionucléide (bouton "+ Ajouter un radionucléide") et des consommations enregistrées.</p>
+
+                <button type="submit" class="primary">Enregistrer</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Pop-up d'ajout rapide d'un radionucléide -->
+    <div class="modal-overlay" id="addRnModal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="closeAddRnModal()">&times;</button>
+            <h3>Ajouter un radionucléide</h3>
+            <form id="addRnForm">
+                <label for="rn_source_id">Source :</label>
+                <select id="rn_source_id" required>
+                    <option value="">-- Choisir une source --</option>
+                    {% for source in sources %}
+                    <option value="{{ source.id }}">{{ source.id }}{{ " (MN)" if source.matiere_nucleaire else "" }}</option>
+                    {% endfor %}
+                </select>
+
+                <label for="rn_nom">Nom du radionucléide (ex : Co-60, 239-Pu) :</label>
+                <input type="text" id="rn_nom" required>
+                <button type="button" onclick="chercherLaraWebRapide()">Chercher sur LaraWeb</button>
+                <span id="rnLaraStatus" style="font-size:0.8rem;"></span>
+
+                <label for="rn_activite">Activité ou concentration de référence :</label>
+                <div class="champ-valeur-unite">
+                    <input type="number" step="any" id="rn_activite" placeholder="valeur" required>
+                    <input type="text" id="rn_unite_activite" value="Bq" placeholder="unité" required>
+                </div>
+                <p class="hint">Multiples reconnus sur l'unité : n, µ (ou u), m, k, M, G, T — ex. "MBq", "kBq/g", "Bq/m3".</p>
+
+                <label for="rn_activite_specifique">
+                    <input type="checkbox" id="rn_activite_specifique" style="width:auto;display:inline;vertical-align:middle;">
+                    Il s'agit d'une <strong>concentration</strong> (par gramme, par m³...), pas d'une activité totale
+                </label>
+
+                <label for="rn_date_reference">Date de référence :</label>
+                <input type="date" id="rn_date_reference" required>
+
+                <label for="rn_periode">Période radioactive, en années (facultatif) :</label>
+                <input type="number" step="any" id="rn_periode">
+
+                <input type="hidden" id="rn_lien_laraweb">
+
+                <button type="submit" class="primary">Ajouter</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Pop-up : ajouter un lieu (rapide, identique à celle de la page Mouvements) -->
+    <div class="modal-overlay" id="addLocationModal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="closeAddLocationModal()">&times;</button>
+            <h3>Ajouter un lieu</h3>
+            <form id="addLocationForm">
+                <label for="loc_nom">Nom (ex : "Armoire des sources", "Labo EPICEA") :</label>
+                <input type="text" id="loc_nom" required>
+
+                <label for="loc_site">Site / Service (ex : "IRMA", "EPICEA") :</label>
+                <input type="text" id="loc_site">
+
+                <label for="loc_batiment">Bâtiment (facultatif) :</label>
+                <input type="text" id="loc_batiment">
+
+                <label for="loc_piece">Pièce (facultatif) :</label>
+                <input type="text" id="loc_piece">
+
+                <button type="submit" class="primary">Ajouter</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // ---- Pop-up source ----
+        const sourcesData = {
+            {% for source in sources %}
+            {{ source.id | tojson }}: {
+                type: {{ source.type.value | tojson if source.type else "null" }},
+                etat_physique: {{ source.etat_physique.value | tojson if source.etat_physique else "null" }},
+                etat_utilisation: {{ source.etat_utilisation.value | tojson if source.etat_utilisation else "null" }},
+                date_arrivee: {{ (source.date_arrivee | string) | tojson if source.date_arrivee else "null" }},
+                emplacement_habituel_id: {{ source.emplacement_habituel_id | tojson }},
+                unite_quantite: {{ source.unite_quantite.value | tojson if source.unite_quantite else "null" }},
+                quantite_initiale: {{ source.quantite_initiale | tojson }},
+                fournisseur: {{ source.fournisseur | tojson }},
+                matiere_nucleaire: {{ source.matiere_nucleaire | tojson }},
+                volume_recipient: {{ source.volume_recipient | tojson }},
+                unite_volume: {{ source.unite_volume.value | tojson if source.unite_volume else "null" }},
+                num_certificat_etalonnage: {{ source.num_certificat_etalonnage | tojson }},
+                reference_catalogue: {{ source.reference_catalogue | tojson }},
+                num_source_fabricant: {{ source.num_source_fabricant | tojson }},
+                lien_dossier_admin: {{ source.lien_dossier_admin | tojson }},
+                commentaire: {{ source.commentaire | tojson }},
+            },
+            {% endfor %}
+        };
+
+        let editingSourceId = null;
+
+        let certificatEnAttente = null;
+
+        function openCreateModal() {
+            editingSourceId = null;
+            certificatEnAttente = null;
+            document.getElementById('sourceModalTitle').textContent = 'Ajouter une source';
+            const form = document.getElementById('sourceForm');
+            if (form) {
+                form.reset();
+                document.getElementById('id').disabled = false;
+            }
+            const hint = document.getElementById('certificatHint');
+            if (hint) hint.style.display = 'none';
+            // La pop-up s'ouvre dans tous les cas : si aucun lieu n'existe,
+            // le formulaire est absent mais le message d'avertissement
+            // (voir plus bas) doit être visible -- avant cette correction,
+            // le clic ne faisait tout simplement rien.
+            document.getElementById('sourceModal').classList.add('open');
+        }
+
+        async function importerDepuisCertificat(file) {
+            if (!file) return;
+            const formData = new FormData();
+            formData.append('file', file);
+            const response = await fetch('/sources/depuis_certificat', { method: 'POST', body: formData });
+            document.getElementById('certificatFileInput').value = '';
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                alert(`Erreur : ${error.detail || "Impossible de lire ce certificat."}`);
+                return;
+            }
+            const r = await response.json();
+
+            openCreateModal();
+            if (r.type_source) document.getElementById('type').value = r.type_source;
+            if (r.masse_delivree_g != null) {
+                document.getElementById('quantite_initiale').value = r.masse_delivree_g;
+                document.getElementById('unite_quantite').value = 'g';
+            }
+            if (r.reference_certificat) document.getElementById('num_certificat_etalonnage').value = r.reference_certificat;
+
+            certificatEnAttente = (r.radionuclide_nom || r.activite != null) ? {
+                nom: r.radionuclide_nom, activite: r.activite, unite_activite: r.unite_activite,
+                activite_est_specifique: r.activite_est_specifique, date_reference: r.date_reference,
+            } : null;
+
+            const hint = document.getElementById('certificatHint');
+            if (hint) {
+                const details = [];
+                if (r.radionuclide_nom) details.push(`radionucléide ${r.radionuclide_nom}`);
+                if (r.activite != null) details.push(`activité ${r.activite} ${r.unite_activite || ''}${r.activite_est_specifique ? ' (spécifique)' : ''}`);
+                if (r.date_reference) details.push(`référence du ${r.date_reference}`);
+                if (r.incertitude_pourcent != null) details.push(`incertitude ±${r.incertitude_pourcent}%`);
+                hint.innerHTML = details.length
+                    ? `Extrait du certificat (à vérifier) : ${details.join(', ')}. ` +
+                      (certificatEnAttente ? "La pop-up d'ajout de ce radionucléide s'ouvrira automatiquement une fois la source enregistrée." : '') +
+                      (r.date_reference === null ? ' <strong>Date de référence non reconnue</strong> dans ce document : à compléter à la main.' : '')
+                    : "Aucune valeur n'a pu être extraite avec confiance de ce document : à compléter entièrement à la main.";
+                hint.style.display = 'block';
+            }
+        }
+
+        function openEditModal(sourceId) {
+            const s = sourcesData[sourceId];
+            if (!s) return;
+            editingSourceId = sourceId;
+            document.getElementById('sourceModalTitle').textContent = `Modifier la source ${sourceId}`;
+            document.getElementById('id').value = sourceId;
+            document.getElementById('id').disabled = true;
+            document.getElementById('type').value = s.type || '';
+            document.getElementById('etat_physique').value = s.etat_physique || '';
+            document.getElementById('etat_utilisation').value = s.etat_utilisation || '';
+            document.getElementById('date_arrivee').value = s.date_arrivee || '';
+            document.getElementById('emplacement_habituel_id').value = s.emplacement_habituel_id ?? '';
+            document.getElementById('unite_quantite').value = s.unite_quantite || '';
+            document.getElementById('quantite_initiale').value = s.quantite_initiale ?? '';
+            document.getElementById('fournisseur').value = s.fournisseur || '';
+            document.getElementById('matiere_nucleaire').checked = !!s.matiere_nucleaire;
+            document.getElementById('volume_recipient').value = s.volume_recipient ?? '';
+            document.getElementById('unite_volume').value = s.unite_volume || '';
+            document.getElementById('num_certificat_etalonnage').value = s.num_certificat_etalonnage || '';
+            document.getElementById('reference_catalogue').value = s.reference_catalogue || '';
+            document.getElementById('num_source_fabricant').value = s.num_source_fabricant || '';
+            document.getElementById('lien_dossier_admin').value = s.lien_dossier_admin || '';
+            document.getElementById('commentaire').value = s.commentaire || '';
+            document.getElementById('sourceModal').classList.add('open');
+        }
+
+        function closeModal() {
+            document.getElementById('sourceModal').classList.remove('open');
+        }
+
+        async function deleteSource(sourceId) {
+            if (!confirm(`Supprimer définitivement la source "${sourceId}" ?`)) return;
+            const response = await fetch(`/sources/${sourceId}`, { method: 'DELETE' });
+            if (response.ok) {
+                window.location.reload();
+            } else if (response.status === 401) {
+                window.location.href = '/auth/login';
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        }
+
+        const sourceFormEl = document.getElementById('sourceForm');
+        if (sourceFormEl) {
+            sourceFormEl.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const payload = {
+                    type: document.getElementById('type').value,
+                    etat_physique: document.getElementById('etat_physique').value,
+                    etat_utilisation: document.getElementById('etat_utilisation').value,
+                    date_arrivee: document.getElementById('date_arrivee').value,
+                    emplacement_habituel_id: parseInt(document.getElementById('emplacement_habituel_id').value),
+                unite_quantite: document.getElementById('unite_quantite').value || null,
+                quantite_initiale: document.getElementById('quantite_initiale').value ? parseFloat(document.getElementById('quantite_initiale').value) : null,
+                    fournisseur: document.getElementById('fournisseur').value || null,
+                    matiere_nucleaire: document.getElementById('matiere_nucleaire').checked,
+                    volume_recipient: document.getElementById('volume_recipient').value ? parseFloat(document.getElementById('volume_recipient').value) : null,
+                    unite_volume: document.getElementById('unite_volume').value || null,
+                    num_certificat_etalonnage: document.getElementById('num_certificat_etalonnage').value || null,
+                    reference_catalogue: document.getElementById('reference_catalogue').value || null,
+                    num_source_fabricant: document.getElementById('num_source_fabricant').value || null,
+                    lien_dossier_admin: document.getElementById('lien_dossier_admin').value || null,
+                    commentaire: document.getElementById('commentaire').value || null,
+                };
+
+                let response;
+                if (editingSourceId) {
+                    response = await fetch(`/sources/${editingSourceId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+                } else {
+                    payload.id = document.getElementById('id').value;
+                    response = await fetch('/sources/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+                }
+
+                if (response.ok) {
+                    const source = await response.json();
+                    // Si cette source vient d'être créée à partir d'un
+                    // certificat, le radionucléide détecté est transmis
+                    // via sessionStorage (survit au rechargement de page,
+                    // contrairement à une simple variable JS) pour ouvrir
+                    // automatiquement sa pop-up d'ajout juste après.
+                    if (!editingSourceId && certificatEnAttente) {
+                        sessionStorage.setItem('rn_depuis_certificat', JSON.stringify({
+                            ...certificatEnAttente, source_id: source.id,
+                        }));
+                    }
+                    window.location.reload();
+                } else if (response.status === 401) {
+                    window.location.href = '/auth/login';
+                } else {
+                    const error = await response.json();
+                    alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+                }
+            });
+        }
+
+        // ---- Pop-up ajout rapide de radionucléide ----
+        function openAddRnModal() {
+            document.getElementById('addRnForm').reset();
+            document.getElementById('rnLaraStatus').textContent = '';
+            document.getElementById('addRnModal').classList.add('open');
+        }
+        function closeAddRnModal() {
+            document.getElementById('addRnModal').classList.remove('open');
+        }
+
+        async function chercherLaraWebRapide() {
+            const nom = document.getElementById('rn_nom').value.trim();
+            const statusEl = document.getElementById('rnLaraStatus');
+            if (!nom) { statusEl.textContent = 'Renseigne le nom du radionucléide.'; statusEl.style.color = 'var(--danger)'; return; }
+            statusEl.textContent = 'Recherche...';
+            statusEl.style.color = 'var(--muted)';
+            const response = await fetch(`/laraweb/${encodeURIComponent(nom)}`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.half_life_years) document.getElementById('rn_periode').value = data.half_life_years;
+                document.getElementById('rn_lien_laraweb').value = `http://www.lnhb.fr/nuclides/${nom}.lara.txt`;
+                statusEl.textContent = `Trouvé : ${data.element || nom}.`;
+                statusEl.style.color = 'var(--success)';
+            } else {
+                statusEl.textContent = 'Non trouvé.';
+                statusEl.style.color = 'var(--danger)';
+            }
+        }
+
+        document.getElementById('addRnForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = {
+                source_id: document.getElementById('rn_source_id').value,
+                nom: document.getElementById('rn_nom').value,
+                activite: parseFloat(document.getElementById('rn_activite').value),
+                activite_est_specifique: document.getElementById('rn_activite_specifique').checked,
+                unite_activite: document.getElementById('rn_unite_activite').value,
+                date_reference: document.getElementById('rn_date_reference').value,
+                periode: document.getElementById('rn_periode').value ? parseFloat(document.getElementById('rn_periode').value) : null,
+                lien_laraweb: document.getElementById('rn_lien_laraweb').value || null,
+            };
+            const response = await fetch('/radionuclides/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (response.ok) {
+                window.location.reload();
+            } else if (response.status === 401) {
+                window.location.href = '/auth/login';
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        });
+
+        // ---- Pop-up ajout rapide de lieu ----
+        function openAddLocationModal() {
+            document.getElementById('addLocationForm').reset();
+            document.getElementById('addLocationModal').classList.add('open');
+        }
+        function closeAddLocationModal() {
+            document.getElementById('addLocationModal').classList.remove('open');
+        }
+
+        document.getElementById('addLocationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = {
+                nom: document.getElementById('loc_nom').value,
+                site: document.getElementById('loc_site').value || null,
+                batiment: document.getElementById('loc_batiment').value || null,
+                piece: document.getElementById('loc_piece').value || null,
+            };
+            const response = await fetch('/locations/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (response.ok) {
+                window.location.reload();
+            } else if (response.status === 401) {
+                window.location.href = '/auth/login';
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        });
+
+        // Reprise après rechargement de page : si une source vient d'être
+        // créée à partir d'un certificat (voir importerDepuisCertificat),
+        // ouvre et pré-remplit automatiquement la pop-up d'ajout du
+        // radionucléide détecté, pour cette source précise. Un seul essai
+        // (retiré de sessionStorage aussitôt lu) : on ne veut pas rouvrir
+        // cette pop-up à chaque rechargement ultérieur de la page.
+        (function reprendreApresCertificat() {
+            const brut = sessionStorage.getItem('rn_depuis_certificat');
+            if (!brut) return;
+            sessionStorage.removeItem('rn_depuis_certificat');
+            let r;
+            try { r = JSON.parse(brut); } catch (e) { return; }
+
+            openAddRnModal();
+            if (document.getElementById('rn_source_id').querySelector(`option[value="${r.source_id}"]`)) {
+                document.getElementById('rn_source_id').value = r.source_id;
+            }
+            if (r.nom) document.getElementById('rn_nom').value = r.nom;
+            if (r.activite != null) document.getElementById('rn_activite').value = r.activite;
+            if (r.unite_activite) document.getElementById('rn_unite_activite').value = r.unite_activite;
+            document.getElementById('rn_activite_specifique').checked = !!r.activite_est_specifique;
+            if (r.date_reference) document.getElementById('rn_date_reference').value = r.date_reference;
+        })();
+    </script>
+    {% endif %}
+{% endblock %}
