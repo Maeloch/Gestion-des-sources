@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Journal d'Audit{% endblock %}
+{% block page_title %}Audit{% endblock %}
+
+{% block content %}
+    <div class="actions-row" style="justify-content:space-between;">
+        <div class="filter-menu">
+            <button id="filterBtn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+                Filtrer
+            </button>
+            <div class="filter-panel" id="filterPanel">
+                <strong style="font-size:0.78rem;color:var(--muted);">Type de modification</strong>
+                {% for action in ["CREATE", "UPDATE", "DELETE", "UTILISATION", "PESEE", "EMPRUNT", "RETOUR"] %}
+                <label><input type="checkbox" class="actionFilter" value="{{ action }}" checked> {{ action }}</label>
+                {% endfor %}
+                <hr>
+                <strong style="font-size:0.78rem;color:var(--muted);">Table concernée</strong>
+                {% for table in tables_distinctes %}
+                <label><input type="checkbox" class="tableFilter" value="{{ table }}" checked> {{ table }}</label>
+                {% endfor %}
+                <hr>
+                <label style="display:block;">Depuis <input type="date" id="dateFrom" style="width:auto;display:inline-block;"></label>
+                <label style="display:block;">Jusqu'au <input type="date" id="dateTo" style="width:auto;display:inline-block;"></label>
+                <div class="filter-actions">
+                    <button type="button" id="filterAll">Tout cocher</button>
+                    <button type="button" id="filterReset">Réinitialiser</button>
+                </div>
+            </div>
+        </div>
+
+        <select id="sortOrder" style="width:auto;">
+            <option value="desc">Plus récent d'abord</option>
+            <option value="asc">Plus ancien d'abord</option>
+        </select>
+    </div>
+
+    <div class="recherche-libre">
+        <input type="text" id="auditTable_recherche" placeholder="🔎 Rechercher (utilisateur, source, champ...)" autocomplete="off">
+    </div>
+
+    <table id="auditTable">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Utilisateur</th>
+                <th>Action</th>
+                <th>Table</th>
+                <th>Source</th>
+                <th>Champ</th>
+                <th>Avant</th>
+                <th>Après</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr data-action="{{ log.action.value }}" data-table="{{ log.table_modifiee }}" data-date="{{ log.timestamp.strftime('%Y-%m-%d') if log.timestamp else '' }}" data-ts="{{ log.timestamp.isoformat() if log.timestamp else '' }}">
+                <td class="mono">{{ log.timestamp.strftime("%Y-%m-%d %H:%M") if log.timestamp else "" }}</td>
+                <td>{{ log.utilisateur }}</td>
+                <td><span class="badge badge-active">{{ log.action.value }}</span></td>
+                <td>{{ log.table_modifiee }}</td>
+                <td class="table-id">{{ log.id_source if log.id_source else "—" }}</td>
+                <td>{{ log.champ_modifie if log.champ_modifie else "—" }}</td>
+                <td class="mono">{{ log.valeur_avant if log.valeur_avant else "—" }}</td>
+                <td class="mono">{{ log.valeur_apres if log.valeur_apres else "—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="empty-state" id="emptyState" style="display:none;">
+        <h3>Aucune entrée pour ce filtre</h3>
+        <p>Élargis le filtre pour voir davantage de résultats.</p>
+    </div>
+
+    <script>
+        const auditRows = Array.from(document.querySelectorAll('#auditTable tbody tr'));
+        const tbody = document.querySelector('#auditTable tbody');
+
+        function applyAuditFilters() {
+            const actions = Array.from(document.querySelectorAll('.actionFilter:checked')).map(c => c.value);
+            const tables = Array.from(document.querySelectorAll('.tableFilter:checked')).map(c => c.value);
+            const from = document.getElementById('dateFrom').value;
+            const to = document.getElementById('dateTo').value;
+            const order = document.getElementById('sortOrder').value;
+            const recherche = document.getElementById('auditTable_recherche') ? document.getElementById('auditTable_recherche').value.trim() : '';
+
+            let visible = 0;
+            auditRows.forEach(row => {
+                let ok = actions.includes(row.dataset.action) && tables.includes(row.dataset.table);
+                if (ok && from && row.dataset.date < from) ok = false;
+                if (ok && to && row.dataset.date > to) ok = false;
+                if (ok && !texteCorrespond(row, recherche)) ok = false;
+                row.dataset.filtreOk = ok ? 'true' : 'false';
+                row.style.display = ok ? '' : 'none';
+                if (ok) visible++;
+            });
+
+            const sorted = auditRows.slice().sort((a, b) => {
+                return order === 'desc' ? b.dataset.ts.localeCompare(a.dataset.ts) : a.dataset.ts.localeCompare(b.dataset.ts);
+            });
+            sorted.forEach(row => tbody.appendChild(row));
+
+            document.getElementById('emptyState').style.display = visible === 0 ? 'block' : 'none';
+            document.getElementById('auditTable').style.display = visible === 0 ? 'none' : 'table';
+
+            window.PaginationRefresh && window.PaginationRefresh.auditTable && window.PaginationRefresh.auditTable();
+        }
+
+        document.querySelectorAll('.actionFilter, .tableFilter').forEach(cb => cb.addEventListener('change', applyAuditFilters));
+        document.getElementById('dateFrom').addEventListener('change', applyAuditFilters);
+        document.getElementById('auditTable_recherche').addEventListener('input', applyAuditFilters);
+        document.getElementById('dateTo').addEventListener('change', applyAuditFilters);
+        document.getElementById('sortOrder').addEventListener('change', applyAuditFilters);
+        document.getElementById('filterAll').addEventListener('click', () => {
+            document.querySelectorAll('.actionFilter, .tableFilter').forEach(cb => cb.checked = true);
+            applyAuditFilters();
+        });
+        document.getElementById('filterReset').addEventListener('click', () => {
+            document.querySelectorAll('.actionFilter, .tableFilter').forEach(cb => cb.checked = true);
+            document.getElementById('dateFrom').value = '';
+            document.getElementById('dateTo').value = '';
+            applyAuditFilters();
+        });
+
+        const filterBtn = document.getElementById('filterBtn');
+        const filterPanel = document.getElementById('filterPanel');
+        filterBtn.addEventListener('click', (e) => { e.stopPropagation(); filterPanel.classList.toggle('open'); });
+        document.addEventListener('click', () => filterPanel.classList.remove('open'));
+        filterPanel.addEventListener('click', (e) => e.stopPropagation());
+
+        applyAuditFilters();
+        rendrePaginable('auditTable');
+    </script>
+{% endblock %}

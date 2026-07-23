@@ -1,0 +1,25 @@
+{# Macro réutilisable : badge icône + texte pour l'état physique d'une
+   source (solide / liquide / gaz), sur le même principe que les badges
+   de statut (couleur distinctive par état). Utilisée par sources.html,
+   sources_archive.html et consumptions.html. #}
+
+{% macro etat_physique_badge(etat) %}
+{% if etat == "solide" %}
+<span class="etat-physique solide" title="Solide">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
+    solide
+</span>
+{% elif etat == "liquide" %}
+<span class="etat-physique liquide" title="Liquide">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5s6 6.8 6 11.2a6 6 0 0 1-12 0c0-4.4 6-11.2 6-11.2z"/></svg>
+    liquide
+</span>
+{% elif etat == "gaz" %}
+<span class="etat-physique gaz" title="Gaz">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15a3.5 3.5 0 0 1 0-7 5 5 0 0 1 9.6-1.5A4 4 0 0 1 19 10a3.5 3.5 0 0 1 0 7H4z"/></svg>
+    gaz
+</span>
+{% else %}
+—
+{% endif %}
+{% endmacro %}

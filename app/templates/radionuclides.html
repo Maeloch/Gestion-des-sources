@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block title %}Radionucléides{% endblock %}
+{% block page_title %}Radionucléides{% endblock %}
+
+{% block content %}
+    <p class="page-lead">« Activité de référence » et « Activité actuelle » sont toutes deux affichées avec le préfixe le plus lisible (ex : MBq, kBq/g). L'activité actuelle est calculée à partir de la référence et de la période radioactive (décroissance depuis la date de référence) : elle n'est pas stockée en base, recalculée à chaque affichage.</p>
+
+    {% if current_user and current_user.role.value != "lecteur" %}
+    <div class="actions-row">
+        <button class="primary" onclick="openCreateModal()">+ Ajouter un radionucléide</button>
+    </div>
+    {% endif %}
+
+    <table id="radionuclidesTable">
+        <thead>
+            <tr>
+                <th data-sort-key="id" data-sort-type="number">ID</th>
+                <th data-sort-key="source" data-sort-type="text">Source</th>
+                <th data-sort-key="nom" data-sort-type="text">Nom</th>
+                <th data-sort-key="activiteref" data-sort-type="number">Activité de référence</th>
+                <th data-sort-key="activiteactuelle" data-sort-type="number">Activité actuelle</th>
+                <th data-sort-key="dateref" data-sort-type="text">Date de Référence</th>
+                <th data-sort-key="periode" data-sort-type="number">Période</th>
+                {% if current_user and current_user.role.value != "lecteur" %}
+                <th>Actions</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for radionuclide in radionuclides %}
+            <tr data-sort-id="{{ radionuclide.id }}"
+                data-sort-source="{{ radionuclide.source_id }}"
+                data-sort-nom="{{ radionuclide.nom }}"
+                data-sort-activiteref="{{ radionuclide.activite_reference_bq_normalisee if radionuclide.activite_reference_bq_normalisee is not none else '' }}"
+                data-sort-activiteactuelle="{{ radionuclide.activite_actuelle_bq_normalisee if radionuclide.activite_actuelle_bq_normalisee is not none else '' }}"
+                data-sort-dateref="{{ radionuclide.date_reference }}"
+                data-sort-periode="{{ radionuclide.periode if radionuclide.periode is not none else '' }}">
+                <td>{{ radionuclide.id }}</td>
+                <td>{{ radionuclide.source_id }}</td>
+                <td>{{ radionuclide.nom }}</td>
+                <td class="mono">{{ radionuclide.activite_reference_affichee }}{{ " (spécifique)" if radionuclide.activite_est_specifique else "" }}</td>
+                <td class="mono">{{ radionuclide.activite_actuelle_affichee if radionuclide.activite_actuelle_affichee else "N/A (pas de période renseignée)" }}</td>
+                <td>{{ radionuclide.date_reference }}</td>
+                <td class="mono">{{ radionuclide.periode_affichee if radionuclide.periode_affichee else "N/A" }}</td>
+                {% if current_user and current_user.role.value != "lecteur" %}
+                <td class="actions-cell">
+                    <button onclick="openEditModal({{ radionuclide.id }})">Modifier</button>
+                    <button onclick="deleteRadionuclide({{ radionuclide.id }})">Supprimer</button>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <script>
+        rendreTableTriable('radionuclidesTable');
+        rendrePaginable('radionuclidesTable');
+        rendreFiltrable('radionuclidesTable', { placeholder: '🔎 Rechercher (nom, source, date...)' });
+    </script>
+
+    {% if current_user and current_user.role.value != "lecteur" %}
+    <!-- Pop-up d'ajout / modification d'un radionucléide -->
+    <div class="modal-overlay" id="radionuclideModal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <h3 id="radionuclideModalTitle">Ajouter un radionucléide</h3>
+            <form id="radionuclideForm">
+                <label for="source_id">Source :</label>
+                <select id="source_id" required>
+                    <option value="">-- Choisir une source --</option>
+                    {% for s in sources %}
+                    <option value="{{ s.id }}">{{ s.id }} ({{ s.type.value }}{{ " - MN" if s.matiere_nucleaire else "" }})</option>
+                    {% endfor %}
+                </select>
+
+                <label for="nom">Nom du radionucléide (ex : Co-60, Cs-137) :</label>
+                <input type="text" id="nom" required>
+                <button type="button" onclick="chercherLaraWeb()">Chercher sur LaraWeb</button>
+                <span id="laraStatus" style="font-size:0.85em;"></span>
+
+                <label for="activite">Activité de référence :</label>
+                <div class="champ-valeur-unite">
+                    <input type="number" step="any" id="activite" placeholder="valeur" required>
+                    <input type="text" id="unite_activite" value="Bq" placeholder="unité" required>
+                </div>
+                <p class="hint">Multiples reconnus sur l'unité : n, µ (ou u), m, k, M, G, T — ex. "MBq", "kBq/g", "Bq/m3".</p>
+
+                <label for="activite_est_specifique">
+                    <input type="checkbox" id="activite_est_specifique" style="width:auto;display:inline;vertical-align:middle;">
+                    Cette activité est une activité <strong>spécifique</strong> (par unité de quantité, ex. Bq/g) et non une activité totale
+                </label>
+                <p style="font-size:0.85em;color:#555;margin-top:0.2rem;">Coche cette case uniquement si l'activité saisie ci-dessus est une concentration (par gramme, par litre...) et non déjà le total pour toute la source. Cela permet de calculer l'activité totale = activité spécifique × quantité restante sur la source.</p>
+
+                <label for="date_reference">Date de référence de cette activité :</label>
+                <input type="date" id="date_reference" required>
+
+                <label for="periode">Période radioactive, en années (facultatif, permet de calculer l'activité actuelle) :</label>
+                <input type="number" step="any" id="periode">
+
+                <label for="lien_laraweb">Lien LaraWeb (facultatif) :</label>
+                <input type="text" id="lien_laraweb">
+
+                <button type="submit">Enregistrer</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Données des radionucléides existants, pour pré-remplir la pop-up de modification.
+        const radionuclidesData = {
+            {% for r in radionuclides %}
+            {{ r.id }}: {
+                source_id: {{ r.source_id | tojson }},
+                nom: {{ r.nom | tojson }},
+                activite: {{ r.activite | tojson }},
+                unite_activite: {{ r.unite_activite | tojson }},
+                date_reference: {{ (r.date_reference | string) | tojson if r.date_reference else "null" }},
+                periode: {{ r.periode | tojson }},
+                lien_laraweb: {{ r.lien_laraweb | tojson }},
+                activite_est_specifique: {{ r.activite_est_specifique | tojson }},
+            },
+            {% endfor %}
+        };
+
+        let editingRadionuclideId = null;
+
+        async function chercherLaraWeb() {
+            const nom = document.getElementById('nom').value.trim();
+            const statusEl = document.getElementById('laraStatus');
+            if (!nom) {
+                statusEl.textContent = "Renseigne d'abord le nom du radionucléide (ex : Co-60).";
+                statusEl.style.color = 'red';
+                return;
+            }
+            statusEl.textContent = 'Recherche en cours...';
+            statusEl.style.color = '#555';
+
+            const response = await fetch(`/laraweb/${encodeURIComponent(nom)}`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.half_life_years) {
+                    document.getElementById('periode').value = data.half_life_years;
+                }
+                document.getElementById('lien_laraweb').value = `http://www.lnhb.fr/nuclides/${nom}.lara.txt`;
+                statusEl.textContent = `Trouvé : ${data.element || nom} (référence : ${data.reference || 'n/a'}).`;
+                statusEl.style.color = 'green';
+            } else if (response.status === 401) {
+                window.location.href = '/auth/login';
+            } else {
+                const error = await response.json();
+                statusEl.textContent = `Non trouvé : ${error.detail || 'vérifie le format (ex : Co-60, Pu-239).'}`;
+                statusEl.style.color = 'red';
+            }
+        }
+
+        function openCreateModal() {
+            editingRadionuclideId = null;
+            document.getElementById('radionuclideModalTitle').textContent = 'Ajouter un radionucléide';
+            document.getElementById('radionuclideForm').reset();
+            document.getElementById('radionuclideModal').classList.add('open');
+        }
+
+        function openEditModal(radionuclideId) {
+            const r = radionuclidesData[radionuclideId];
+            if (!r) return;
+            editingRadionuclideId = radionuclideId;
+            document.getElementById('radionuclideModalTitle').textContent = `Modifier le radionucléide #${radionuclideId}`;
+            document.getElementById('source_id').value = r.source_id || '';
+            document.getElementById('nom').value = r.nom || '';
+            document.getElementById('activite').value = r.activite ?? '';
+            document.getElementById('activite_est_specifique').checked = !!r.activite_est_specifique;
+            document.getElementById('unite_activite').value = r.unite_activite || '';
+            document.getElementById('date_reference').value = r.date_reference || '';
+            document.getElementById('periode').value = r.periode ?? '';
+            document.getElementById('lien_laraweb').value = r.lien_laraweb || '';
+            document.getElementById('radionuclideModal').classList.add('open');
+        }
+
+        function closeModal() {
+            document.getElementById('radionuclideModal').classList.remove('open');
+        }
+
+        async function deleteRadionuclide(radionuclideId) {
+            if (!confirm(`Supprimer définitivement ce radionucléide (#${radionuclideId}) ?`)) return;
+            const response = await fetch(`/radionuclides/${radionuclideId}`, { method: 'DELETE' });
+            if (response.ok) {
+                window.location.reload();
+            } else if (response.status === 401) {
+                window.location.href = '/auth/login';
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        }
+
+        document.getElementById('radionuclideForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const periodeValue = document.getElementById('periode').value;
+            const payload = {
+                source_id: document.getElementById('source_id').value,
+                nom: document.getElementById('nom').value,
+                activite: parseFloat(document.getElementById('activite').value),
+                activite_est_specifique: document.getElementById('activite_est_specifique').checked,
+                unite_activite: document.getElementById('unite_activite').value,
+                date_reference: document.getElementById('date_reference').value,
+                periode: periodeValue ? parseFloat(periodeValue) : null,
+                lien_laraweb: document.getElementById('lien_laraweb').value || null,
+            };
+
+            let response;
+            if (editingRadionuclideId) {
+                response = await fetch(`/radionuclides/${editingRadionuclideId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+            } else {
+                response = await fetch('/radionuclides/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+            }
+
+            if (response.ok) {
+                window.location.reload();
+            } else if (response.status === 401) {
+                window.location.href = '/auth/login';
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        });
+    </script>
+    {% endif %}
+{% endblock %}

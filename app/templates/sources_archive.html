@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% import "_macros.html" as macros %}
+
+{% block title %}Archives des sources{% endblock %}
+{% block page_title %}Archives des sources{% endblock %}
+
+{% block content %}
+    <p class="page-lead">Sources remisées, en déchet, transférées ou détruites. Modification réservée aux administrateurs, pour corriger une erreur de saisie. Ces sources sont aussi consultables depuis <a href="/sources">la page Sources</a>, en décochant les statuts actifs dans le filtre.</p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Type</th>
+                <th>État Physique</th>
+                <th>État d'Utilisation</th>
+                <th>Date d'Arrivée</th>
+                <th>Dernier lieu connu</th>
+                <th>Fournisseur</th>
+                <th>Matière Nucléaire</th>
+                <th>Commentaire</th>
+                {% if current_user and current_user.role.value == "admin" %}
+                <th>Actions</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for source in sources %}
+            <tr>
+                <td>{{ source.id }}</td>
+                <td>{{ source.type.value if source.type else "" }}</td>
+                <td>{{ macros.etat_physique_badge(source.etat_physique.value if source.etat_physique else None) }}</td>
+                <td>{{ source.etat_utilisation.value if source.etat_utilisation else "" }}</td>
+                <td>{{ source.date_arrivee }}</td>
+                <td>{{ source.emplacement_actuel.nom if source.emplacement_actuel else source.emplacement_habituel.nom if source.emplacement_habituel else "N/A" }}</td>
+                <td>{{ source.fournisseur if source.fournisseur else "N/A" }}</td>
+                <td>{{ "Oui" if source.matiere_nucleaire else "Non" }}</td>
+                <td>{{ source.commentaire if source.commentaire else "" }}</td>
+                {% if current_user and current_user.role.value == "admin" %}
+                <td class="actions-cell">
+                    <button onclick="openEditModal('{{ source.id }}')">Corriger</button>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if current_user and current_user.role.value == "admin" %}
+    <!-- Pop-up de correction (admin uniquement) -->
+    <div class="modal-overlay" id="sourceModal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <h3 id="sourceModalTitle">Corriger une source archivée</h3>
+            <form id="sourceForm">
+                <label for="etat_utilisation">État d'Utilisation :</label>
+                <select id="etat_utilisation" required>
+                    <option value="en utilisation">En utilisation</option>
+                    <option value="remisée">Remisée</option>
+                    <option value="en déchet">En déchet</option>
+                    <option value="en attente">En attente</option>
+                    <option value="transférée">Transférée</option>
+                    <option value="détruite">Détruite</option>
+                </select>
+                <p style="font-size:0.85em;color:#555;">Repasser en "En utilisation" ou "En attente" fera réapparaître la source dans la liste active.</p>
+
+                <label for="commentaire">Commentaire (facultatif) :</label>
+                <input type="text" id="commentaire">
+
+                <label for="fournisseur">Fournisseur / fabricant (facultatif) :</label>
+                <input type="text" id="fournisseur">
+
+                <button type="submit">Enregistrer la correction</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const sourcesData = {
+            {% for source in sources %}
+            {{ source.id | tojson }}: {
+                etat_utilisation: {{ source.etat_utilisation.value | tojson if source.etat_utilisation else "null" }},
+                commentaire: {{ source.commentaire | tojson }},
+                fournisseur: {{ source.fournisseur | tojson }},
+            },
+            {% endfor %}
+        };
+
+        let editingSourceId = null;
+
+        function openEditModal(sourceId) {
+            const s = sourcesData[sourceId];
+            if (!s) return;
+            editingSourceId = sourceId;
+            document.getElementById('sourceModalTitle').textContent = `Corriger la source ${sourceId}`;
+            document.getElementById('etat_utilisation').value = s.etat_utilisation || '';
+            document.getElementById('commentaire').value = s.commentaire || '';
+            document.getElementById('fournisseur').value = s.fournisseur || '';
+            document.getElementById('sourceModal').classList.add('open');
+        }
+
+        function closeModal() {
+            document.getElementById('sourceModal').classList.remove('open');
+        }
+
+        document.getElementById('sourceForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = {
+                etat_utilisation: document.getElementById('etat_utilisation').value,
+                commentaire: document.getElementById('commentaire').value || null,
+                fournisseur: document.getElementById('fournisseur').value || null,
+            };
+            const response = await fetch(`/sources/${editingSourceId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (response.ok) {
+                alert('Correction enregistrée avec succès !');
+                window.location.reload();
+            } else if (response.status === 401) {
+                window.location.href = '/auth/login';
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        });
+    </script>
+    {% endif %}
+{% endblock %}

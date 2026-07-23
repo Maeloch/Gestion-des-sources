@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Gestion des Sources Radioactives{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v={{ app_version }}">
+    <script src="/static/sortable.js?v={{ app_version }}"></script>
+    <script src="/static/paginate.js?v={{ app_version }}"></script>
+    <script src="/static/filtrable.js?v={{ app_version }}"></script>
+</head>
+<body>
+{% if current_user %}
+    <div class="app-shell">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+                    <path d="M2 24 C 10 24, 10 6, 15 6 C 20 6, 20 24, 28 24" stroke="#4fb8b8" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="15" cy="6" r="2.2" fill="#4fb8b8"/>
+                </svg>
+                <div class="sidebar-brand-text">Sources Radioactives<span>ASNR</span></div>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="/sources" class="sidebar-link {% if request.url.path.startswith('/sources') %}active{% endif %}">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6L4 18a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3l-5-10V2"/><path d="M8.5 12h7"/><path d="M7 2h10"/></svg>
+                    Sources
+                </a>
+                <a href="/movements" class="sidebar-link {% if request.url.path.startswith('/movements') or request.url.path.startswith('/locations') %}active{% endif %}">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 21l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                    Mouvements
+                </a>
+                <a href="/consumptions" class="sidebar-link {% if request.url.path.startswith('/consumptions') %}active{% endif %}">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5s6 6.8 6 11.2a6 6 0 0 1-12 0c0-4.4 6-11.2 6-11.2z"/></svg>
+                    Consommations
+                </a>
+                {% if current_user.role.value in ("admin", "utilisateur_mn") %}
+                <a href="/import-export" class="sidebar-link {% if request.url.path.startswith('/import-export') %}active{% endif %}">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
+                    Import / Export
+                </a>
+                <a href="/audit" class="sidebar-link {% if request.url.path.startswith('/audit') %}active{% endif %}">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6a1 1 0 0 1 1 1v1H8V4a1 1 0 0 1 1-1z"/><rect x="5" y="5" width="14" height="16" rx="1.5"/><path d="M8.5 11h7M8.5 14.5h7M8.5 18h4"/></svg>
+                    Audit
+                </a>
+                {% endif %}
+            </nav>
+            <div class="sidebar-foot">v{{ app_version }}</div>
+        </aside>
+
+        <div class="main-wrapper">
+            <header class="topbar">
+                <div class="topbar-title">
+                    <button class="hamburger" id="hamburgerBtn" aria-label="Ouvrir le menu">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+                    </button>
+                    {% block page_title %}{% endblock %}
+                </div>
+                <div class="topbar-right">
+                    <div class="user-menu">
+                        <button class="user-menu-trigger" id="userMenuTrigger">
+                            <span class="user-avatar" style="position:relative;">
+                                {{ current_user.username[0]|upper }}
+                                {% if current_user.demandes_role_en_attente %}
+                                <span class="notif-dot" title="{{ current_user.demandes_role_en_attente }} demande(s) de rôle en attente"></span>
+                                {% endif %}
+                            </span>
+                            {{ current_user.username }}
+                        </button>
+                        <div class="user-menu-dropdown" id="userMenuDropdown">
+                            <div class="role-pill">Rôle : {{ current_user.role.value }}</div>
+                            {% if current_user.role.value == "admin" %}
+                            <a href="/users">Utilisateurs &amp; rôles{{ " (" ~ current_user.demandes_role_en_attente ~ " en attente)" if current_user.demandes_role_en_attente else "" }}</a>
+                            {% endif %}
+                            <button type="button" onclick="ouvrirModalMotDePasse()">Changer mon mot de passe</button>
+                            <button type="button" onclick="ouvrirModalDemandeRole()">Demander un changement de rôle</button>
+                            <a href="/auth/logout" class="danger">Déconnexion</a>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Pop-up : changer son mot de passe -->
+            <div class="modal-overlay" id="motDePasseModal">
+                <div class="modal-box">
+                    <button class="modal-close" onclick="fermerModalMotDePasse()">&times;</button>
+                    <h3>Changer mon mot de passe</h3>
+                    <form id="motDePasseForm">
+                        <label for="mdp_actuel">Mot de passe actuel :</label>
+                        <input type="password" id="mdp_actuel" required>
+
+                        <label for="mdp_nouveau">Nouveau mot de passe (8 caractères minimum) :</label>
+                        <input type="password" id="mdp_nouveau" required minlength="8">
+
+                        <label for="mdp_confirme">Confirmer le nouveau mot de passe :</label>
+                        <input type="password" id="mdp_confirme" required minlength="8">
+
+                        <button type="submit" class="primary">Enregistrer</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Pop-up : demander un changement de rôle -->
+            <div class="modal-overlay" id="demandeRoleModal">
+                <div class="modal-box">
+                    <button class="modal-close" onclick="fermerModalDemandeRole()">&times;</button>
+                    <h3>Demander un changement de rôle</h3>
+                    <p class="hint">Envoie une demande à un administrateur ; ton rôle actuel ({{ current_user.role.value }}) ne change pas tant qu'elle n'est pas approuvée.</p>
+                    <form id="demandeRoleForm">
+                        <label for="role_demande">Rôle souhaité :</label>
+                        <select id="role_demande" required>
+                            <option value="admin">Administrateur</option>
+                            <option value="utilisateur_mn">Utilisateur MN</option>
+                            <option value="utilisateur">Utilisateur</option>
+                            <option value="lecteur">Lecteur</option>
+                        </select>
+
+                        <label for="role_commentaire">Message pour l'administrateur (facultatif) :</label>
+                        <input type="text" id="role_commentaire">
+
+                        <button type="submit" class="primary">Envoyer la demande</button>
+                    </form>
+                </div>
+            </div>
+
+            <script>
+                function ouvrirModalMotDePasse() {
+                    document.getElementById('userMenuDropdown').classList.remove('open');
+                    document.getElementById('motDePasseForm').reset();
+                    document.getElementById('motDePasseModal').classList.add('open');
+                }
+                function fermerModalMotDePasse() {
+                    document.getElementById('motDePasseModal').classList.remove('open');
+                }
+                document.getElementById('motDePasseForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const actuel = document.getElementById('mdp_actuel').value;
+                    const nouveau = document.getElementById('mdp_nouveau').value;
+                    const confirme = document.getElementById('mdp_confirme').value;
+                    if (nouveau !== confirme) {
+                        alert('Le nouveau mot de passe et sa confirmation ne correspondent pas.');
+                        return;
+                    }
+                    const response = await fetch('/users/me/password', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mot_de_passe_actuel: actuel, nouveau_mot_de_passe: nouveau }),
+                    });
+                    if (response.ok) {
+                        alert('Mot de passe changé avec succès.');
+                        fermerModalMotDePasse();
+                    } else if (response.status === 401) {
+                        window.location.href = '/auth/login';
+                    } else {
+                        const error = await response.json();
+                        alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+                    }
+                });
+
+                function ouvrirModalDemandeRole() {
+                    document.getElementById('userMenuDropdown').classList.remove('open');
+                    document.getElementById('demandeRoleForm').reset();
+                    document.getElementById('demandeRoleModal').classList.add('open');
+                }
+                function fermerModalDemandeRole() {
+                    document.getElementById('demandeRoleModal').classList.remove('open');
+                }
+                document.getElementById('demandeRoleForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const response = await fetch('/users/me/demande-role', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            role_demande: document.getElementById('role_demande').value,
+                            commentaire: document.getElementById('role_commentaire').value || null,
+                        }),
+                    });
+                    if (response.ok) {
+                        alert('Demande envoyée à un administrateur.');
+                        fermerModalDemandeRole();
+                    } else if (response.status === 401) {
+                        window.location.href = '/auth/login';
+                    } else {
+                        const error = await response.json();
+                        alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+                    }
+                });
+            </script>
+            <main class="content">
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+    <script>
+        const trigger = document.getElementById('userMenuTrigger');
+        const dropdown = document.getElementById('userMenuDropdown');
+        trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.classList.toggle('open');
+        });
+        document.addEventListener('click', () => dropdown.classList.remove('open'));
+
+        const hamburger = document.getElementById('hamburgerBtn');
+        const sidebar = document.getElementById('sidebar');
+        if (hamburger) {
+            hamburger.addEventListener('click', () => sidebar.classList.toggle('open'));
+        }
+    </script>
+{% else %}
+    <div class="auth-page">
+        {% block auth_content %}{% endblock %}
+    </div>
+{% endif %}
+</body>
+</html>
