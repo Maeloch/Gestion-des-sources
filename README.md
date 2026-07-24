@@ -1,6 +1,6 @@
 # Gestion des Sources Radioactives
 
-**Version 0.1.27** — affichée en bas de la barre latérale de l'application. En cas
+**Version 0.1.29** — affichée en bas de la barre latérale de l'application. En cas
 de doute sur la version que tu es en train de tester (par exemple si tu as
 plusieurs dossiers de versions différentes sur ta machine), regarde le pied
 de page : le numéro doit correspondre à celui annoncé dans le message de
@@ -210,10 +210,20 @@ Ce script (1) sauvegarde `data/database.sqlite` **du dossier stable**
 (horodatée), (2) copie tout le contenu du nouveau dossier vers le stable
 — SAUF `data/`, `.env`, `.git/` et les dossiers techniques (venv,
 `__pycache__`...), qui restent ceux du dossier stable, jamais écrasés —
-(3) si le dossier stable est suivi par git, enregistre un commit, sinon
-saute cette étape sans erreur (git n'est pas obligatoire), (4) "touche"
-`app/main.py` du dossier stable pour déclencher le rechargement d'un
-serveur déjà lancé avec `--reload` depuis ce dossier.
+(3) si le dossier stable est suivi par git, enregistre un commit puis le
+pousse automatiquement vers le dépôt distant s'il y en a un de
+configuré (sinon saute ces deux étapes sans erreur, git n'est pas
+obligatoire), (4) "touche" `app/main.py` du dossier stable pour
+déclencher le rechargement d'un serveur déjà lancé avec `--reload`
+depuis ce dossier.
+
+Le push automatique (ajouté le 23/07/2026, question posée directement)
+échoue proprement s'il n'y a pas de réseau, ou si le dépôt distant a
+avancé ailleurs entre-temps (ex: mise à jour faite depuis un autre
+poste) : le commit **local**, lui, a déjà réussi dans tous les cas — un
+échec du push ne fait jamais échouer la mise à jour elle-même, juste sa
+synchronisation vers GitHub. Le message d'erreur affiché indique quoi
+faire (généralement : `git pull` puis relancer `git push` à la main).
 
 **Limite à connaître** : une copie n'efface jamais un fichier qui
 n'existe plus dans la nouvelle version (elle ajoute/remplace, elle ne
@@ -274,6 +284,90 @@ réseau en plein transfert, notamment), une piste plus solide serait de
 préparer la nouvelle version dans un dossier séparé, vérifier qu'elle
 démarre correctement, puis ne basculer qu'ensuite — un chantier
 distinct, à ouvrir si le besoin s'en fait sentir.
+
+### C. Pourquoi pas de `git pull` dans le dossier stable (scénario A) ?
+
+Question posée directement le 23/07/2026 : dans le scénario A (ton
+organisation actuelle), le dossier stable n'a jamais besoin d'un
+`git pull`, et ce n'est pas un oubli. La source de la mise à jour, dans
+ce scénario, c'est le fichier que tu télécharges et décompresses — le
+script copie ses fichiers DIRECTEMENT dans le dossier stable, puis
+enregistre ça comme un commit. Rien ne vient du dépôt distant à ce
+moment-là : `git pull` n'aurait donc rien à récupérer. Le `git push`
+(désormais automatique) sert seulement à ENVOYER ce commit vers GitHub
+pour y garder une trace/sauvegarde — pas à en RECEVOIR quoi que ce soit.
+
+`git pull` (et le script `mettre_a_jour.py`, scénario B) ne redevient
+utile que si le dossier stable doit un jour récupérer un changement fait
+AILLEURS que par ce chemin habituel — par exemple si tu modifies un
+fichier directement sur GitHub, ou si tu fais tourner l'appli sur une
+seconde machine qui doit se synchroniser avec les commits poussés depuis
+la première.
+
+### D. En cas de souci : revenir à une version antérieure
+
+Testé de bout en bout avant d'être écrit ici (pas seulement en théorie).
+Le code et la base de données se traitent séparément :
+
+**Le code**, via git — l'historique n'est jamais perdu, chaque mise à
+jour est son propre commit :
+
+```bash
+cd ~/Python/Venv/BDD_sources/current   # ton dossier stable
+git log --oneline                       # repère le commit de la version qui marchait
+git checkout <hash-du-commit> -- app/   # restaure UNIQUEMENT le code de cette version-là
+git commit -m "Retour arrière vers V0.1.27"
+git push
+```
+
+Ceci ne réécrit rien : `git log` montrera ensuite les trois commits
+(l'ancienne version, la nouvelle qui posait problème, et ce retour en
+arrière) — un historique honnête plutôt qu'un maquillage, et sans les
+risques d'un `git reset --hard` (qui, lui, réécrit l'historique et peut
+recréer le genre de conflit rencontré récemment s'il est ensuite poussé).
+
+**La base de données**, depuis la sauvegarde automatique : chaque
+exécution d'`appliquer_version.py` en crée une, horodatée, dans
+`data/backups/`, AVANT toute modification — donc une sauvegarde du
+"juste avant que ça ne casse" existe déjà, sans action supplémentaire de
+ta part.
+
+```bash
+# server arrêté ou --reload actif (voir plus haut, se recharge tout seul)
+cp data/backups/database-avant-maj-<horodatage-le-plus-recent>.sqlite data/database.sqlite
+```
+
+Si la version problématique avait ajouté une migration de schéma (une
+nouvelle colonne, par exemple), revenir en arrière côté code n'y changera
+rien tout seul — c'est justement pour ça que restaurer la sauvegarde de
+base ci-dessus, qui correspond exactement à l'état d'avant cette
+migration, est la partie qui compte le plus dans ce scénario-là.
+
+### E. Sur Windows : le rechargement automatique peut mal réagir à une grosse mise à jour
+
+Rencontré concrètement le 24/07/2026 (journal de serveur réel à
+l'appui) : `appliquer_version.py` modifie une centaine de fichiers d'un
+coup. Sur Windows, avec `--reload` actif, WatchFiles peut détecter ces
+changements en plusieurs vagues rapprochées plutôt qu'en une seule fois
+— et chaque nouvelle vague interrompt la tentative de rechargement
+précédente avant qu'elle n'ait fini de redémarrer le serveur (visible
+dans le journal : plusieurs `WatchFiles detected changes...` suivis
+d'un `KeyboardInterrupt`, en cascade). Plus probable encore si le
+dossier est sur un lecteur réseau (chemins UNC du type
+`\\serveur\partage\...`), la détection de changements y étant moins
+fiable que sur un disque local. Le script affiche maintenant un
+avertissement explicite à ce sujet sur Windows.
+
+En général, une des tentatives finit par aboutir sans intervention. Mais
+si la page web n'affiche toujours pas la nouvelle version en bas à
+droite après une mise à jour : arrête complètement le serveur (`Ctrl+C`
+dans son terminal — au besoin plusieurs fois si la cascade l'a laissé
+dans un état confus) et relance-le proprement, plutôt que d'insister sur
+le rechargement automatique pour cette fois-là. Une piste plus radicale
+si le problème se répète souvent : arrêter le serveur AVANT de lancer
+`appliquer_version.py`, puis le relancer une fois le script terminé —
+qui évite complètement le risque, au prix d'une brève coupure du
+service pendant la mise à jour.
 
 ## 6. Limites connues (état au 10/07/2026)
 

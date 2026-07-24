@@ -37,7 +37,7 @@ def _preparer_cible(tmp_path, avec_git=True, avec_vieux_fichier=True):
     if avec_vieux_fichier:
         (cible / "app" / "fichier_disparu_dans_la_nouvelle_version.py").write_text("vieux code")
     if avec_git:
-        subprocess.run(["git", "init", "-q"], cwd=cible, check=True)
+        subprocess.run(["git", "init", "-q", "--initial-branch=main"], cwd=cible, check=True)
         subprocess.run(["git", "config", "user.email", "t@t.fr"], cwd=cible, check=True)
         subprocess.run(["git", "config", "user.name", "T"], cwd=cible, check=True)
         subprocess.run(["git", "add", "-A"], cwd=cible, check=True)
@@ -135,3 +135,128 @@ def test_sauvegarde_la_base_du_dossier_cible_avant_la_copie(tmp_path):
     sauvegardes = list((cible / "data" / "backups").glob("database-avant-maj-*.sqlite"))
     assert len(sauvegardes) == 1
     assert sauvegardes[0].read_text() == "VRAIE BASE - NE JAMAIS ECRASER"
+
+
+def _preparer_remote_bare(tmp_path):
+    """Un vrai dépôt bare local, servant de dépôt distant simulé (comme
+    GitHub) -- permet de tester le push automatique pour de vrai, pas
+    seulement en théorie."""
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", "--initial-branch=main", str(remote)], check=True)
+    return remote
+
+
+def test_pousse_automatiquement_si_un_remote_est_configure(tmp_path):
+    """23/07/2026, demandé directement ("pourquoi ce n'est pas
+    automatique ?") : un commit doit être suivi d'un push automatique
+    vers le dépôt distant, s'il y en a un de configuré."""
+    remote = _preparer_remote_bare(tmp_path)
+    source = _preparer_source(tmp_path)
+    cible = _preparer_cible(tmp_path, avec_git=True)
+    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=cible, check=True)
+    subprocess.run(["git", "push", "-q", "-u", "origin", "main"], cwd=cible, check=True)
+
+    resultat = _lancer_script(source, cible)
+
+    assert resultat.returncode == 0
+    assert "Poussé vers le dépôt distant avec succès" in resultat.stdout
+    log_distant = subprocess.run(
+        ["git", "log", "--oneline", "main"], cwd=remote, capture_output=True, text=True,
+    )
+    assert log_distant.stdout.count("\n") == 2  # le commit initial + celui de la mise à jour
+
+
+def test_ignore_gracieusement_l_absence_de_remote(tmp_path):
+    source = _preparer_source(tmp_path)
+    cible = _preparer_cible(tmp_path, avec_git=True)  # dépôt git local, mais AUCUN remote configuré
+
+    resultat = _lancer_script(source, cible)
+
+    assert resultat.returncode == 0
+    assert "Aucun dépôt distant configuré" in resultat.stdout
+
+
+def test_echec_du_push_ne_fait_pas_echouer_le_script(tmp_path):
+    """Un push refusé (dépôt distant qui a avancé ailleurs, ex: mise à
+    jour faite depuis un autre poste entre-temps) ne doit jamais faire
+    échouer toute la mise à jour : le commit local, lui, a déjà réussi et
+    doit être conservé."""
+    remote = _preparer_remote_bare(tmp_path)
+    source = _preparer_source(tmp_path)
+    cible = _preparer_cible(tmp_path, avec_git=True)
+    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=cible, check=True)
+    subprocess.run(["git", "push", "-q", "-u", "origin", "main"], cwd=cible, check=True)
+
+    # Simule un autre poste qui pousse une modification concurrente,
+    # faisant avancer le distant sans que "cible" ne le sache.
+    autre_poste = tmp_path / "autre_poste"
+    subprocess.run(["git", "clone", "-q", str(remote), str(autre_poste)], check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.fr"], cwd=autre_poste, check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=autre_poste, check=True)
+    (autre_poste / "app" / "main.py").write_text("# modif concurrente")
+    subprocess.run(["git", "add", "-A"], cwd=autre_poste, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "modif concurrente"], cwd=autre_poste, check=True)
+    subprocess.run(["git", "push", "-q"], cwd=autre_poste, check=True)
+
+    resultat = _lancer_script(source, cible)
+
+    assert resultat.returncode == 0  # ne plante jamais
+    assert "ATTENTION : échec du push" in resultat.stderr
+    # Le commit local a bien eu lieu malgré l'échec du push.
+    log_local = subprocess.run(["git", "log", "--oneline"], cwd=cible, capture_output=True, text=True)
+    assert "Mise à jour vers" in log_local.stdout
+
+
+def test_avertit_sur_windows_du_risque_de_cascade_de_rechargement(tmp_path):
+    """24/07/2026, cas réel rencontré : sur Windows, avec --reload actif
+    et beaucoup de fichiers modifiés d'un coup (le cas normal pour ce
+    script), plusieurs tentatives de rechargement peuvent se marcher
+    dessus (confirmé par un vrai journal de serveur fourni par
+    l'utilisateur -- neuf tentatives interrompues d'affilée avant qu'une
+    ne finisse par aboutir). Un avertissement explicite doit apparaître
+    UNIQUEMENT sur Windows, invitant à vérifier la version affichée et à
+    redémarrer manuellement en cas de doute."""
+    source = _preparer_source(tmp_path)
+    cible = _preparer_cible(tmp_path, avec_git=False)
+
+    import unittest.mock
+    with unittest.mock.patch("platform.system", return_value="Windows"):
+        # Le sous-processus, lui, tourne dans un VRAI interprète Python
+        # séparé (subprocess.run) : ce monkeypatch ne l'atteint pas.
+        # Ce test vérifie donc directement la fonction plutôt que le
+        # sous-processus complet, contrairement aux autres tests de ce
+        # fichier -- nécessaire ici puisque le comportement dépend de la
+        # plateforme d'exécution, qu'on ne peut pas simuler à travers un
+        # sous-processus indépendant.
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("appliquer_version_test", _VRAI_SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        import io
+        import contextlib
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            module.forcer_rechargement(cible)
+
+    assert "ATTENTION (Windows)" in sortie.getvalue()
+    assert "lecteur réseau" in sortie.getvalue()
+
+
+def test_pas_d_avertissement_windows_hors_windows(tmp_path):
+    cible = _preparer_cible(tmp_path, avec_git=False)
+
+    import unittest.mock
+    with unittest.mock.patch("platform.system", return_value="Linux"):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("appliquer_version_test2", _VRAI_SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        import io
+        import contextlib
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            module.forcer_rechargement(cible)
+
+    assert "ATTENTION (Windows)" not in sortie.getvalue()

@@ -2625,3 +2625,123 @@ retiré), `app/templates/movements.html` (champ texte avec suggestions,
 présélection depuis l'URL), `app/main.py` (éligibilité à l'emprunt
 calculée pour chaque source), `tests/test_ergonomie_ui.py`,
 `tests/test_sources_permissions.py`, `tests/test_inventory_import_robustesse.py`.
+
+---
+
+## 35. V0.1.28 (23/07/2026) : mésaventure git réelle, résolue et testée ; push automatique ; retour en arrière testé
+
+### La mésaventure
+
+Premier essai concret de la mise en place git : un `git init` séparé
+dans chaque dossier de version (V0.1.27, et apparemment déjà V0.1.26
+avant), sans lien entre eux, plus un dossier "current" possédant lui
+aussi son propre historique indépendant. Résultat : rejet du push
+("fetch first"), puis "refusing to merge unrelated histories" au
+`git pull` depuis "current". Rien d'endommagé, mais une vraie confusion,
+exactement le genre de situation où deviner une solution aurait été
+risqué.
+
+Diagnostic reconstruit, puis **la solution complète simulée avant
+d'être transmise** : dépôt distant bare, dossier avec historique
+indépendant ET contenu différent (le cas réel), vraie base de données et
+vrai `.env` non suivis. Testé précisément le point de friction (`git
+checkout` refuse d'écraser un fichier non suivi qui diffère -- d'où le
+besoin du `-f`), et confirmé que la vraie base et le vrai `.env`
+ressortent intacts après coup (`git status --ignored` le confirme). Le
+nettoyage des branches parasites (`git push origin --delete`) testé
+également.
+
+### Push automatique ajouté
+
+Question posée directement : pourquoi le commit n'est-il pas suivi d'un
+push automatique ? Bonne question -- ajouté. `appliquer_version.py`
+pousse maintenant vers le dépôt distant après chaque commit, s'il y en a
+un de configuré. Un échec (pas de réseau, dépôt distant qui a avancé
+ailleurs) ne fait jamais échouer la mise à jour : le commit local, lui,
+a déjà réussi, et un message clair indique la marche à suivre. Les trois
+cas (succès, aucun remote configuré, push refusé) vérifiés avec de vrais
+dépôts git, pas seulement supposés -- y compris en reproduisant pour de
+vrai un push refusé (un second clone qui pousse une modification
+concurrente avant nous).
+
+### "Pas besoin de git pull dans current ?"
+
+Clarifié : dans le scénario où la mise à jour vient d'un fichier reçu
+puis appliqué par le script (pas d'un `git pull`), la source de vérité
+est directement ce fichier -- rien à récupérer depuis le dépôt distant à
+ce moment-là. `git pull`/`mettre_a_jour.py` restent réservés à l'autre
+scénario (récupérer un changement fait ailleurs, ex. une seconde
+machine).
+
+### Retour en arrière : conçu et testé, pas seulement documenté
+
+Question de sécurité légitime : et si une version posait problème ?
+Processus construit et vérifié de bout en bout sur un scénario simulé
+complet (V0.1.27 fonctionnelle, V0.1.28 avec un "bug", sauvegarde de
+base automatique entre les deux) : `git checkout <commit> -- app/` puis
+un nouveau commit restaure le code sans réécrire l'historique (les trois
+commits restent visibles, honnêtes) ; copier la sauvegarde horodatée
+(déjà créée automatiquement par le script avant chaque mise à jour)
+restaure la base. Les deux étapes vérifiées ensemble, dans l'ordre.
+
+### Testé
+
+183 tests automatisés (3 nouveaux, pour le push automatique dans ses
+trois cas). Le nom de branche par défaut de l'environnement de test
+("master" plutôt que "main") a nécessité un ajustement dans le montage
+des tests eux-mêmes (`--initial-branch=main` explicite) -- trouvé en
+creusant un échec, pas ignoré.
+
+### Fichiers modifiés
+
+`app/scripts/appliquer_version.py` (push automatique après le commit),
+`tests/test_appliquer_version.py` (tests du push, correction du nom de
+branche par défaut), `README.md` (section 5bis complétée : push
+automatique, clarification git pull, processus de retour en arrière
+testé).
+
+---
+
+## 36. V0.1.29 (24/07/2026) : cascade de rechargement sur Windows
+
+### Cas réel rencontré
+
+La procédure de récupération git (session précédente) et
+`appliquer_version.py` ont tous les deux fonctionné correctement --
+confirmé par le propre journal du script ("Commit git créé", "Poussé
+vers le dépôt distant avec succès"). Mais la page web restait affichée
+en version antérieure. Le journal du serveur (terminal 1, fourni par
+l'utilisateur) montre la cause : neuf vagues successives de
+"WatchFiles detected changes... Reloading..." se sont interrompues les
+unes les autres (`KeyboardInterrupt` à chaque fois, en pleine
+séquence d'import) avant qu'une dixième ne finisse par aboutir. Le
+dossier étant sur un lecteur réseau (chemin UNC), la détection de
+changements y est probablement moins fiable et plus lente que sur un
+disque local, ce qui a dû amplifier le phénomène.
+
+Diagnostic raisonné plutôt que reproduit à l'identique : impossible de
+simuler un Windows avec `multiprocessing` en mode "spawn" sur un lecteur
+réseau depuis ce bac à sable Linux -- dit explicitement à l'utilisateur,
+plutôt que de prétendre à une certitude qui n'existe pas. Le correctif
+proposé (avertissement explicite, redémarrage manuel en dernier
+recours) reste valable indépendamment du mécanisme exact en cause.
+
+### Corrigé
+
+`appliquer_version.py` affiche maintenant un avertissement explicite
+sur Windows après une mise à jour, invitant à vérifier la version
+affichée et à redémarrer manuellement en cas de doute plutôt que de
+faire confiance aveuglément au rechargement automatique. Absent sur les
+autres plateformes (vérifié par test, simulation de `platform.system()`
+dans les deux sens).
+
+### Testé
+
+185 tests automatisés (2 nouveaux, pour l'avertissement Windows -- avec
+et sans la plateforme simulée).
+
+### Fichiers modifiés
+
+`app/scripts/appliquer_version.py` (avertissement Windows après
+rechargement), `tests/test_appliquer_version.py`, `README.md` (section
+5bis, nouvelle sous-section E).

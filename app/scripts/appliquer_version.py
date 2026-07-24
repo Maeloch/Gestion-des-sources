@@ -36,6 +36,7 @@ Ce que fait ce script, dans l'ordre :
 Si un serveur tourne déjà (avec --reload) depuis le dossier cible, la
 mise à jour est donc appliquée à chaud : rien à redémarrer à la main.
 """
+import platform
 import shutil
 import subprocess
 import sys
@@ -137,6 +138,19 @@ def forcer_rechargement(cible: Path) -> None:
     if principal.exists():
         principal.touch()
         print("Rechargement du serveur déclenché (si lancé avec --reload depuis ce dossier).")
+
+    if platform.system() == "Windows":
+        print(
+            "\nATTENTION (Windows) : cette mise à jour vient de modifier beaucoup de "
+            "fichiers d'un coup. Sur Windows, --reload peut mal réagir dans ce cas "
+            "précis (plusieurs tentatives de rechargement se marchent dessus les unes "
+            "les autres, avec des erreurs affichées dans le terminal du serveur) --\n"
+            "encore plus probable si ce dossier est sur un lecteur réseau. Vérifie que "
+            "la page web affiche bien la nouvelle version en bas à droite : si non, "
+            "arrête le serveur (Ctrl+C dans son terminal, au besoin plusieurs fois) et "
+            "relance-le proprement plutôt que de faire confiance au rechargement "
+            "automatique pour cette fois-ci."
+        )
 
 
 def main() -> None:
