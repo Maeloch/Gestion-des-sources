@@ -24,8 +24,12 @@ Ce que fait ce script, dans l'ordre :
    techniques (venv, __pycache__, .pytest_cache, *.egg-info) qui n'ont
    rien à faire dans une copie de mise à jour.
 4. Si le dossier cible est un dépôt git (présence d'un .git/), enregistre
-   la mise à jour comme un commit -- sinon, cette étape est simplement
-   ignorée : git n'est pas obligatoire pour utiliser ce script.
+   la mise à jour comme un commit, puis le pousse automatiquement vers le
+   dépôt distant s'il y en a un de configuré -- sinon, ces deux étapes
+   sont simplement ignorées : git n'est pas obligatoire pour utiliser ce
+   script. Un échec du push (pas de réseau, dépôt distant qui a avancé
+   ailleurs...) n'interrompt jamais la mise à jour : le commit local, lui,
+   a déjà réussi.
 5. "Touche" app/main.py du dossier cible, pour déclencher de façon
    certaine le rechargement d'un serveur déjà lancé avec --reload.
 
@@ -84,7 +88,7 @@ def copier_vers(cible: Path) -> None:
 
 def commit_git_si_applicable(cible: Path) -> None:
     if not (cible / ".git").exists():
-        print("Le dossier cible n'est pas un dépôt git : étape de commit ignorée.")
+        print("Le dossier cible n'est pas un dépôt git : étapes commit/push ignorées.")
         return
     try:
         from app.version import APP_VERSION
@@ -101,6 +105,31 @@ def commit_git_si_applicable(cible: Path) -> None:
         # Rien à commiter (fichiers identiques) n'est pas une erreur.
         print("Rien de nouveau à commiter (fichiers identiques au dernier commit) ou dépôt non configuré :")
         print(resultat.stdout.strip() or resultat.stderr.strip())
+        return  # rien de nouveau : rien à pousser non plus
+
+    pousser_si_applicable(cible)
+
+
+def pousser_si_applicable(cible: Path) -> None:
+    """Pousse le commit vers le dépôt distant, si un est configuré --
+    demandé le 23/07/2026 ("pourquoi ce n'est pas automatique ?"). Un
+    échec (pas de remote, réseau, rejet parce que le distant a avancé
+    ailleurs) n'interrompt jamais la mise à jour : le commit LOCAL, lui,
+    a déjà réussi et reste la garantie principale -- l'historique existe
+    sur cette machine même si le push rate. Message clair dans ce cas,
+    avec la commande à relancer à la main une fois le problème réglé."""
+    remotes = subprocess.run(["git", "remote"], cwd=cible, capture_output=True, text=True)
+    if not remotes.stdout.strip():
+        print("Aucun dépôt distant configuré (git remote) : étape push ignorée.")
+        return
+    resultat = subprocess.run(["git", "push"], cwd=cible, capture_output=True, text=True)
+    if resultat.returncode == 0:
+        print("Poussé vers le dépôt distant avec succès.")
+    else:
+        print("\nATTENTION : échec du push (le commit local, lui, a bien été fait) :", file=sys.stderr)
+        print((resultat.stderr or resultat.stdout).strip(), file=sys.stderr)
+        print("Corrige le problème (ex: 'git pull' si le distant a avancé ailleurs), "
+              "puis relance 'git push' à la main depuis ce dossier.", file=sys.stderr)
 
 
 def forcer_rechargement(cible: Path) -> None:

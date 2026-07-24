@@ -1,0 +1,91 @@
+89 avertissement(s) (cliquer pour afficher)
+
+    Sources scellées ligne 2 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : Co 57) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 3 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : Ce 139) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 4 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : Cd 109) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 5 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : Am 241) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 6 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : Co 60) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 7 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : Y 88) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 8 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : Cr 51) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 9 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : Sr 85) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 10 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : Cs 137) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 11 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : Sn 113) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 24 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : 241-Am, date d’arrivée : 1997-12-27 00:00:00) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 103 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : 60-Co, date d’arrivée : 1993-01-07 00:00:00) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 104 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : 60-Co, date d’arrivée : 1995-12-13 00:00:00) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 105 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : 60-Co, date d’arrivée : 1995-12-13 00:00:00) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 106 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : 210-Po) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 112 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 113 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources scellées ligne 114 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources non scellées ligne 2 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : Pu 239) — à vérifier et importer manuellement si besoin.
+    Sources non scellées ligne 3 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : Am 241) — à vérifier et importer manuellement si besoin.
+    Sources non scellées ligne 4 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : Cm 244) — à vérifier et importer manuellement si besoin.
+    SERAC-0066 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0067 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0064 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0065 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0068 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0074 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0069 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0070 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0071 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0054 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0055 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0057 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0058 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0059 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0060 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0061 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0062 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0063 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0072 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0073 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0117 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0118 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0119 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0120 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0056 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0121 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0122 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0123 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0124 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0110 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-092 : état physique deviné par défaut (solide), à vérifier.
+    SERAC-0125 : état physique deviné par défaut (solide), à vérifier.
+    Sources non scellées ligne 45 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources non scellées ligne 46 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources non scellées ligne 48 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources non scellées ligne 49 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources non scellées ligne 50 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources non scellées ligne 51 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources non scellées ligne 52 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources non scellées ligne 54 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources non scellées ligne 56 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources non scellées ligne 58 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    SERAC-0082 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0083 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0084 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0046 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0085 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0086 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0087 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0088 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0047 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0048 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0049 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0051 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0053 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0081 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0089 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0135 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0136 : état physique deviné par défaut (liquide), à vérifier.
+    SERAC-0137 : état physique deviné par défaut (liquide), à vérifier.
+    Sources consommables ligne 133 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : 222-Rn, date d’arrivée : 2016-04-01 00:00:00) — à vérifier et importer manuellement si besoin.
+    Sources consommables ligne 137 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources consommables ligne 138 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources consommables ligne 139 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources consommables ligne 140 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources consommables ligne 141 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources consommables ligne 142 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
+    Sources consommables ligne 143 : identifiant vide ou illisible, ligne ignorée bien qu'elle contienne des données (radionucléide : aucun) — à vérifier et importer manuellement si besoin.
