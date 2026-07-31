@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import engine, Base, get_db
-from app.security.permissions import get_current_user_optional, get_current_admin, require_audit_access, require_admin_or_mn, user_can_access_mn
+from app.security.permissions import get_current_user_optional, get_current_admin, require_audit_access, require_admin_or_mn, user_can_access_mn, check_source_mn_access
 
 # Migrations automatiques du schéma de la base de données. Sans danger à
 # exécuter à chaque démarrage : ne font rien si la base est déjà à jour.
@@ -70,6 +70,12 @@ templates = Jinja2Templates(directory="app/templates")
 # la quantité restante des sources).
 from app.services.units import arrondir_scientifique as _arrondir_scientifique_jinja
 templates.env.globals["arrondir_scientifique"] = _arrondir_scientifique_jinja
+from app.services.units import formater_duree as _formater_duree_jinja
+templates.env.globals["formater_duree"] = _formater_duree_jinja
+from app.services.units import formater_activite_bq as _formater_activite_bq_jinja
+templates.env.globals["formater_activite_bq"] = _formater_activite_bq_jinja
+from app.services.units import date_fr as _date_fr_jinja
+templates.env.filters["date_fr"] = _date_fr_jinja
 templates.env.globals["app_version"] = APP_VERSION
 
 
@@ -124,11 +130,6 @@ async def list_sources(request: Request, db: Session = Depends(get_db), current_
                 rn.activite_actuelle_bq_brute = None
                 rn.activite_actuelle_affichee = None
 
-    # Liste des radionucléides distincts actuellement présents (toutes
-    # sources visibles confondues), pour le filtre dédié -- demandé le
-    # 14/07/2026. Triée pour un menu déroulant stable et lisible.
-    radionuclides_distincts = sorted({rn.nom for s in sources for rn in s.radionuclides})
-
     # Éligibilité au bouton "Emprunter" (page Sources) -- même logique que
     # "sources_disponibles" sur la page Mouvements (voir plus bas) : pas
     # d'emprunt déjà en cours, lieu habituel défini. Demandé le 22/07/2026,
@@ -151,7 +152,64 @@ async def list_sources(request: Request, db: Session = Depends(get_db), current_
             "request": request,
             "sources": sources,
             "locations": locations,
-            "radionuclides_distincts": radionuclides_distincts,
+            "current_user": current_user,
+        },
+    )
+
+@app.get("/sources/{source_id}/fiche", response_class=HTMLResponse)
+async def fiche_source(source_id: str, request: Request, db: Session = Depends(get_db), current_user=Depends(get_current_user_optional)):
+    """Fiche détaillée d'une source : ses informations, ses
+    radionucléides, son historique de mouvements et de consommations
+    réunis sur une seule page -- demandé le 28/07/2026, à l'instar de la
+    page Sources (mêmes calculs dérivés, appliqués à une seule source au
+    lieu de toutes)."""
+    redirect = _redirect_to_login_if_needed(current_user)
+    if redirect:
+        return redirect
+    from app.repositories.source import SourceRepository
+    from app.repositories.movement import MovementRepository
+    from app.repositories.consumption import ConsumptionRepository
+    from app.repositories.audit import AuditRepository
+    from app.services.units import quantite_restante_calculee, activite_actuelle_bq, formater_activite_bq, parser_unite_activite
+    from app.models.source import is_archived
+
+    source = SourceRepository(db).get_by_id(source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source non trouvée")
+    check_source_mn_access(source, current_user)
+
+    source.quantite_calculee = quantite_restante_calculee(db, source)
+    source.activite_max_bq = None
+    for rn in source.radionuclides:
+        if rn.periode:
+            rn.activite_actuelle_bq_brute = activite_actuelle_bq(rn)
+            try:
+                _, unite_base = parser_unite_activite(rn.unite_activite) if rn.unite_activite else (1.0, "Bq")
+            except ValueError:
+                unite_base = "Bq"
+            rn.activite_actuelle_affichee = formater_activite_bq(rn.activite_actuelle_bq_brute, unite_base)
+        else:
+            rn.activite_actuelle_bq_brute = None
+            rn.activite_actuelle_affichee = None
+
+    mouvements = sorted(MovementRepository(db).get_by_source(source_id), key=lambda m: m.timestamp, reverse=True)
+    consommations = sorted(ConsumptionRepository(db).get_by_source(source_id), key=lambda c: c.timestamp, reverse=True)
+    audit_logs = AuditRepository(db).get_by_source(source_id)
+
+    en_emprunt = any(m.date_retour_reelle is None for m in mouvements)
+    peut_emprunter = not en_emprunt and bool(source.emplacement_habituel_id) and not is_archived(source)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="fiche_source.html",
+        context={
+            "request": request,
+            "source": source,
+            "archivee": is_archived(source),
+            "mouvements": mouvements,
+            "consommations": consommations,
+            "audit_logs": audit_logs,
+            "peut_emprunter": peut_emprunter,
             "current_user": current_user,
         },
     )
@@ -336,6 +394,66 @@ async def list_consumptions(request: Request, db: Session = Depends(get_db), cur
             "sources_consommables": consommables,
             "sources_consommables_json": sources_consommables_json,
             "consumptions_json": consumptions_json,
+            "current_user": current_user,
+        },
+    )
+
+@app.get("/consumptions/spectre", response_class=HTMLResponse)
+async def spectre_consommation(
+    request: Request,
+    date_debut: str = None,
+    date_fin: str = None,
+    date_reference: str = None,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user_optional),
+):
+    """Spectre-type des radionucléides consommés sur une plage de temps
+    -- demandé le 30/07/2026, pour estimer la composition isotopique des
+    déchets (supposée proportionnelle à l'activité des sources mères
+    consommées). Voir app/services/spectre_consommation.py pour le
+    raisonnement complet et ses limites assumées."""
+    redirect = _redirect_to_login_if_needed(current_user)
+    if redirect:
+        return redirect
+    from datetime import date as date_cls, timedelta
+    from app.services.spectre_consommation import calculer_spectre_consommation
+
+    aujourdhui = date_cls.today()
+    # Par défaut : le mois écoulé, jusqu'à aujourd'hui -- une plage
+    # immédiatement utile à l'arrivée sur la page plutôt qu'un formulaire
+    # vide, ajustable ensuite au besoin.
+    debut = date_cls.fromisoformat(date_debut) if date_debut else aujourdhui - timedelta(days=30)
+    fin = date_cls.fromisoformat(date_fin) if date_fin else aujourdhui
+    reference = date_cls.fromisoformat(date_reference) if date_reference else aujourdhui
+
+    erreur = None
+    resultat = None
+    if reference < fin:
+        erreur = (
+            f"La date de référence ({reference.strftime('%d/%m/%Y')}) est antérieure à la fin de la "
+            f"plage choisie ({fin.strftime('%d/%m/%Y')}) -- impossible de calculer une décroissance "
+            "vers l'arrière dans le temps. Choisis une date de référence égale ou postérieure."
+        )
+    else:
+        resultat = calculer_spectre_consommation(db, debut, fin, reference)
+        if not user_can_access_mn(current_user):
+            # Même filtrage MN que partout ailleurs : une source MN ne
+            # doit apparaître ni dans le spectre ni dans son détail pour
+            # un compte qui n'y a pas accès.
+            from app.repositories.source import SourceRepository
+            mn_ids = {s.id for s in SourceRepository(db).get_all() if s.matiere_nucleaire}
+            resultat["consommations"] = [c for c in resultat["consommations"] if c["source_id"] not in mn_ids]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="spectre_consommation.html",
+        context={
+            "request": request,
+            "date_debut": debut,
+            "date_fin": fin,
+            "date_reference": reference,
+            "resultat": resultat,
+            "erreur": erreur,
             "current_user": current_user,
         },
     )

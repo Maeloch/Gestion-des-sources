@@ -51,15 +51,26 @@ function rendreFiltrable(tableId, options = {}) {
     barre.innerHTML = `<input type="text" id="${tableId}_recherche" placeholder="${options.placeholder || '🔎 Rechercher...'}" autocomplete="off">`;
     table.insertAdjacentElement('beforebegin', barre);
 
+    const champ = document.getElementById(`${tableId}_recherche`);
+
+    // Préremplissage depuis ?recherche=XXX dans l'URL -- demandé le
+    // 28/07/2026, pour permettre un lien direct depuis une autre page
+    // (ex: cliquer sur un identifiant de source dans le tableau
+    // Radionucléides doit amener sur Sources avec ce texte déjà
+    // recherché, sans avoir à le retaper).
+    const params = new URLSearchParams(window.location.search);
+    const rechercheDepuisUrl = params.get('recherche');
+    if (rechercheDepuisUrl) champ.value = rechercheDepuisUrl;
+
     function refresh() {
-        const texte = document.getElementById(`${tableId}_recherche`).value.trim();
+        const texte = champ.value.trim();
         Array.from(tbody.querySelectorAll('tr')).forEach(row => {
             row.dataset.filtreOk = texteCorrespond(row, texte) ? 'true' : 'false';
         });
         window.PaginationRefresh && window.PaginationRefresh[tableId] && window.PaginationRefresh[tableId]();
     }
 
-    document.getElementById(`${tableId}_recherche`).addEventListener('input', refresh);
+    champ.addEventListener('input', refresh);
 
     window.FiltrableRefresh = window.FiltrableRefresh || {};
     window.FiltrableRefresh[tableId] = refresh;

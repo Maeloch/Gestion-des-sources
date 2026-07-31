@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Spectre-type des consommations{% endblock %}
+{% block page_title %}Spectre-type des consommations{% endblock %}
+
+{% block content %}
+    <p class="page-lead mt-0"><a href="/consumptions">← Retour aux consommations</a></p>
+    <p class="page-lead">Estime la composition isotopique des déchets sur une plage de temps, à partir des sources consommées (supposée proportionnelle à leur activité) — l'activité de chaque radionucléide est amenée par décroissance jusqu'à la date de référence choisie. Pour une source à plusieurs radionucléides, chacun est supposé uniformément réparti dans toute sa quantité physique (vrai pour un mélange de calibration homogène).</p>
+
+    <div class="card">
+        <form method="get" action="/consumptions/spectre" class="actions-row" style="flex-wrap:wrap; align-items:flex-end;">
+            <div>
+                <label for="date_debut">Du</label>
+                <input type="date" id="date_debut" name="date_debut" value="{{ date_debut }}" required>
+            </div>
+            <div>
+                <label for="date_fin">Au</label>
+                <input type="date" id="date_fin" name="date_fin" value="{{ date_fin }}" required>
+            </div>
+            <div>
+                <label for="date_reference">Spectre à la date du</label>
+                <input type="date" id="date_reference" name="date_reference" value="{{ date_reference }}" required>
+            </div>
+            <button type="submit" class="primary">Calculer</button>
+        </form>
+    </div>
+
+    {% if erreur %}
+    <div class="card" style="border-color:var(--danger, #c0392b);">
+        <p style="margin:0;">⚠ {{ erreur }}</p>
+    </div>
+    {% endif %}
+
+    {% if resultat %}
+        {% if resultat.spectre %}
+        <h3>Spectre au {{ date_reference | date_fr }}</h3>
+        <div class="card">
+            <table>
+                <thead><tr><th>Radionucléide</th><th>Activité</th><th>Part du total</th><th></th></tr></thead>
+                <tbody>
+                    {% for entree in resultat.spectre %}
+                    <tr>
+                        <td class="mono"><a href="/radionuclides?recherche={{ entree.nom | urlencode }}">{{ entree.nom }}</a></td>
+                        <td class="mono">{{ formater_activite_bq(entree.activite_bq) }}</td>
+                        <td class="mono">{{ "%.1f"|format(entree.pourcentage) }} %</td>
+                        <td style="width:40%;">
+                            <div style="background:var(--border); border-radius:4px; overflow:hidden; height:10px;">
+                                <div style="background:var(--accent); width:{{ entree.pourcentage }}%; height:100%;"></div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <p class="page-lead" style="margin:0.8rem 0 0;">Total : {{ formater_activite_bq(resultat.total_bq) }}, sur {{ resultat.consommations | length }} consommation(s) entre le {{ date_debut | date_fr }} et le {{ date_fin | date_fr }}.</p>
+        </div>
+        {% else %}
+        <div class="card"><p style="margin:0;">Aucune consommation exploitable trouvée sur cette plage.</p></div>
+        {% endif %}
+
+        {% if resultat.radionuclides_sans_periode %}
+        <div class="card" style="border-color:var(--warning, #d68910);">
+            <p style="margin:0;"><strong>À savoir :</strong> période radioactive inconnue pour {{ resultat.radionuclides_sans_periode | join(", ") }} -- aucune décroissance appliquée pour ce(s) radionucléide(s), valeur à la date de consommation reprise telle quelle.</p>
+        </div>
+        {% endif %}
+
+        {% if resultat.consommations_ignorees %}
+        <div class="card">
+            <p style="margin:0 0 0.4rem;"><strong>{{ resultat.consommations_ignorees | length }} consommation(s) ignorée(s) :</strong></p>
+            <ul style="margin:0;">
+                {% for c in resultat.consommations_ignorees %}
+                <li>Source {{ c.source_id }} : {{ c.raison }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if resultat.consommations %}
+        <h3>Consommations incluses</h3>
+        <div class="card">
+            <table>
+                <thead><tr><th>Date</th><th>Source</th><th>Radionucléide</th><th>Activité à la consommation</th></tr></thead>
+                <tbody>
+                    {% for c in resultat.consommations %}
+                    <tr>
+                        <td>{{ c.date | date_fr }}</td>
+                        <td class="table-id"><a href="/sources/{{ c.source_id | urlencode }}/fiche">{{ c.source_id }}</a></td>
+                        <td class="mono">{{ c.radionuclide }}</td>
+                        <td class="mono">{{ formater_activite_bq(c.activite_a_la_consommation_bq) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    {% endif %}
+{% endblock %}

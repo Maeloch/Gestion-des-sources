@@ -2745,3 +2745,302 @@ et sans la plateforme simulée).
 `app/scripts/appliquer_version.py` (avertissement Windows après
 rechargement), `tests/test_appliquer_version.py`, `README.md` (section
 5bis, nouvelle sous-section E).
+
+---
+
+## 37. V0.1.30 (28/07/2026) : recherche Sources généralisée, lien "gérer tous les lieux" ajouté
+
+### Recherche Sources, mise à niveau
+
+Signalé directement : le champ de recherche de Sources était plus
+restrictif que sur les autres pages (ne comparait qu'à l'identifiant),
+avec un menu déroulant séparé pour filtrer par radionucléide. Généralisé
+pour utiliser la même fonction que Radionucléides/Mouvements/Lieux/
+Consommations (`texteCorrespond`, voir filtrable.js) : compare
+maintenant le texte tapé à l'identifiant, au(x) radionucléide(s), au
+lieu, etc. Le menu déroulant devenu redondant (taper un nom de
+radionucléide dans la recherche libre le trouve déjà) a été retiré, côté
+template ET côté route (calcul de la liste des radionucléides distincts,
+qui ne servait plus qu'à peupler ce menu).
+
+Vérifié avec un vrai moteur DOM : recherche par identifiant, par
+radionucléide (impossible avant sans le menu dédié), et par lieu --
+chacune isolant correctement les bonnes sources.
+
+### Lien "Gérer tous les lieux" ajouté sur Sources
+
+Le bouton "+ Lieu" existait déjà sur Sources, avec son pendant
+radionucléide ("+ Ajouter un radionucléide" + "Gérer tous les
+radionucléides →") mais sans lien équivalent vers la page Lieux --
+contrairement à Mouvements, qui a déjà les deux. Généralisé : Sources a
+maintenant aussi son lien "Gérer tous les lieux →", au même endroit que
+celui des radionucléides.
+
+### Testé
+
+186 tests automatisés (un test obsolète adapté pour vérifier le nouveau
+comportement plutôt que l'ancien menu déroulant, deux nouveaux pour le
+lien lieux et pour l'attribut porté par chaque ligne).
+
+### Fichiers modifiés
+
+`app/templates/sources.html` (recherche généralisée, menu déroulant
+retiré, lien lieux ajouté), `app/main.py` (calcul devenu inutile
+retiré), `tests/test_ergonomie_ui.py`, `README.md`.
+
+---
+
+## 38. V0.1.31 (28/07/2026) : revue de liens croisés, import de consommations historiques
+
+### Revue de cohérence des liens croisés
+
+Demandé directement, en suite du travail précédent : partout où un
+identifiant de source, un nom de radionucléide ou un lieu était affiché
+en texte brut sur une page qui n'est pas la sienne, ça devient
+maintenant un lien vers la bonne page. Passage systématique par tous
+les templates plutôt qu'au cas par cas : identifiant source sur
+Radionucléides/Mouvements/Consommations/Audit, lieux sur Mouvements (les
+deux colonnes), noms de radionucléides et lieu sur Sources elle-même.
+
+Nécessitait d'abord une brique manquante : un paramètre `?recherche=`
+dans l'URL, lu et appliqué au chargement de la page (ajouté à la fois
+dans le module générique `rendreFiltrable` et dans la recherche maison
+de Sources). Vérifié avec un vrai moteur DOM que cliquer un lien croisé
+arrive bien sur la page cible avec la recherche déjà appliquée, pas
+seulement préremplie -- sur les deux implémentations (Sources et une
+page utilisant le module générique).
+
+### Import de consommations historiques
+
+Nouveau chantier : les consommations étaient jusqu'ici tenues sur des
+fiches papier. Flux retenu (proposé par l'utilisateur) : transcription
+en tableur Excel (par Claude, à partir de scans à venir), relecture et
+correction par l'utilisateur -- la vérification a lieu à CE moment --
+puis import volontairement simple ("idiot"), sans bouton dédié dans
+l'interface.
+
+Deux points techniques vérifiés avant d'écrire une ligne de code,
+plutôt que supposés : `quantite_restante_calculee()` trie déjà
+explicitement par date au moment du calcul (jamais par ordre
+d'insertion), donc l'ordre des lignes du fichier n'a aucune importance ;
+le champ `timestamp` de `ConsumptionDB` accepte une valeur explicite
+(pas seulement "maintenant"), donc les dates historiques passent sans
+souci en travaillant directement au niveau du modèle plutôt que via le
+service habituel (pensé pour la saisie en direct).
+
+Nouveau service (`import_consommations_historiques.py`) : format Excel
+simple (ID Source, Date, Masse avant/après, Quantité utilisée,
+Commentaire, Utilisateur), génération d'un modèle vide pour cadrer la
+transcription, import avec rapport clair (créées / ignorées avec
+raison). Point d'entrée en ligne de commande, pas de route HTTP.
+
+Vérifié avec un scénario construit exprès pour mettre à l'épreuve le
+point le plus important plutôt que le supposer : trois pesées d'une même
+source, saisies **volontairement dans le désordre chronologique** dans
+le fichier -- le calcul de quantité restante donne bien le même résultat
+qu'un import trié. Vérifié aussi que les dates s'affichent correctement
+sur la page Consommations (les dates historiques, pas la date du jour).
+
+### Testé
+
+202 tests automatisés (16 nouveaux : 7 pour les liens croisés, 9 pour
+l'import historique). Une nouvelle fixture `db_session` ajoutée à
+`conftest.py`, nécessaire pour tester un script autonome qui travaille
+directement avec une session de base de données plutôt que par l'API
+HTTP habituelle de ce projet.
+
+### Fichiers ajoutés
+
+`app/services/import_consommations_historiques.py`,
+`app/scripts/import_consommations_historiques.py`,
+`tests/test_import_consommations_historiques.py`,
+`tests/test_liens_croises.py`.
+
+### Fichiers modifiés
+
+`app/static/filtrable.js` (préremplissage depuis ?recherche=),
+`app/templates/{radionuclides,movements,consumptions,audit,sources}.html`
+(liens croisés, préremplissage sur Sources), `tests/conftest.py`
+(fixture db_session), `README.md`.
+
+---
+
+## 39. V0.1.32 (30/07/2026) : fiche détaillée par source, réalisée
+
+### La fiche elle-même
+
+Proposition de la session précédente, demandée directement cette fois :
+une page par source (`/sources/{id}/fiche`), regroupant informations
+générales, radionucléides, mouvements et consommations. Réutilise les
+mêmes calculs dérivés que la liste des sources (quantité restante,
+activité actuelle par radionucléide, éligibilité à l'emprunt) plutôt que
+de les recalculer différemment -- même logique, appliquée à une seule
+source. `formater_duree` (déjà utilisée en Python) enregistrée comme
+fonction Jinja globale au passage, nécessaire pour afficher la période
+radioactive de façon lisible sur cette page (elle ne l'était pas
+encore).
+
+Décision prise en construisant : pas de duplication du formulaire de
+modification (assez complexe) sur cette nouvelle page. Le bouton
+"Modifier" renvoie vers la liste des sources, déjà filtrée sur cette
+source précise, où ce formulaire existe déjà et fonctionne -- une seule
+version à maintenir plutôt que deux copies à garder synchronisées pour
+toujours.
+
+Vérifié avec un vrai serveur et des données complètes (radionucléide,
+mouvement en cours, consommation) : quantité restante correctement
+calculée, emplacement habituel distingué de l'emplacement actuel (mis à
+jour par l'emprunt en cours), bouton "Emprunter" correctement absent
+puisqu'un emprunt est déjà en cours, badge "en cours" affiché sur le
+mouvement concerné.
+
+### Liens croisés ajustés en conséquence
+
+Les liens croisés de la session précédente (identifiant de source sur
+Radionucléides/Mouvements/Consommations/Audit) pointaient vers la liste
+des sources filtrée -- ils pointent maintenant vers cette fiche, une
+destination plus directe pour "en savoir plus sur cette source
+précise". Les liens vers les lieux et les radionucléides (pas liés à une
+source unique) restent inchangés, vers la liste filtrée. L'identifiant
+lui-même, sur la page Sources, devient aussi cliquable vers sa propre
+fiche (il était en texte brut jusqu'ici).
+
+### Testé
+
+211 tests automatisés (16 nouveaux : 9 pour la fiche elle-même,
+4 mis à jour pour la nouvelle destination des liens croisés). Contrôle
+d'accès vérifié explicitement : une source classée Matière Nucléaire
+renvoie 404 (pas 403) à un compte sans accès MN, même logique que
+l'API JSON existante.
+
+### Fichiers ajoutés
+
+`app/templates/fiche_source.html`, `tests/test_fiche_source.py`.
+
+### Fichiers modifiés
+
+`app/main.py` (route de la fiche, `formater_duree` enregistrée comme
+fonction Jinja globale), `app/static/style.css` (mise en page de la
+fiche), `app/templates/{radionuclides,movements,consumptions,audit,sources}.html`
+(liens croisés redirigés vers la fiche), `tests/test_liens_croises.py`,
+`README.md`.
+
+---
+
+## 40. V0.1.33 (30/07/2026) : dates en français partout
+
+### Le filtre
+
+Demandé directement, sur l'exemple précis de la date de référence d'un
+radionucléide. Nouveau filtre Jinja `date_fr` (dans units.py, aux côtés
+de `arrondir_scientifique` et `formater_duree`) : JJ/MM/AAAA, avec une
+option heure quand pertinent (audit, demandes de rôle), valeur nulle
+gérée proprement ("—").
+
+### Recherche systématique plutôt qu'un correctif isolé
+
+Plutôt que de corriger uniquement l'exemple donné, recherche dans tous
+les templates. Trouvé et corrigé : Sources, Archive des sources,
+Radionucléides, Mouvements (trois dates), Consommations, Audit, la
+fiche source (où plusieurs dates étaient déjà en français par
+construction précédente, d'autres non -- harmonisées pour utiliser
+toutes le même filtre), et une page non anticipée -- la date de demande
+de rôle sur la page Utilisateurs, trouvée en élargissant la recherche.
+Un cas côté JavaScript (pas un template Jinja) également trouvé et
+corrigé : le message affiché après import d'un certificat PDF montrait
+une date ISO brute reçue du serveur en JSON.
+
+Point vérifié avec soin, pas supposé : les attributs `data-*` utilisés
+en interne pour le tri chronologique des tableaux restent en ISO
+(nécessaire pour un tri correct -- JJ/MM/AAAA ne se trie pas
+correctement comme texte). Confirmé avec un vrai serveur, sur toutes
+les pages, qu'aucune date ISO ne reste visible dans le texte affiché,
+uniquement dans ces attributs internes.
+
+### Testé
+
+221 tests automatisés (10 nouveaux). Deux bugs trouvés dans mes propres
+tests en les écrivant, pas dans l'application : une assertion trop
+stricte ne tenant pas compte d'un champ de saisie caché légitimement en
+ISO, et un nom de route mal deviné pour la demande de rôle (corrigé en
+retrouvant le vrai nom dans le code plutôt qu'en devinant à nouveau) --
+et un piège de fixtures (client et admin_client partagent le même
+client de test sous-jacent ; register_and_login sur l'un écrase la
+session de l'autre) déjà documenté dans un test existant, dont j'ai
+repris exactement le correctif établi.
+
+### Fichiers ajoutés
+
+`tests/test_dates_francaises.py`.
+
+### Fichiers modifiés
+
+`app/services/units.py` (fonction `date_fr`), `app/main.py` (filtre
+Jinja enregistré), `app/templates/{sources,sources_archive,radionuclides,consumptions,movements,audit,fiche_source,users}.html`,
+`README.md`.
+
+---
+
+## 41. V0.1.34 (30/07/2026) : spectre-type des consommations, généralisé à tous les radionucléides
+
+### La fonctionnalité
+
+Proposée par l'utilisateur : estimer la composition isotopique des
+déchets (supposée proportionnelle à l'activité des sources mères
+consommées) sur une plage de temps, avec l'activité de chaque
+radionucléide amenée par décroissance jusqu'à une date de référence
+choisie (aujourd'hui par défaut, n'importe quelle date égale ou
+postérieure à la fin de la plage sinon -- une date antérieure est
+refusée explicitement, la décroissance n'ayant de sens que vers l'avant
+dans le temps).
+
+Vérifié avant d'écrire du code, pas supposé : `DecayService.calculate_activity`
+accepte déjà n'importe quelle date de départ et d'arrivée, pas seulement
+celle du radionucléide -- directement réutilisable pour amener une
+activité calculée à la date d'une consommation jusqu'à la date de
+référence souhaitée.
+
+### La question posée en retour, et sa réponse
+
+"Pourquoi ne pas faire le calcul sur tous les rn d'une source ?" --
+question légitime, qui méritait d'être creusée plutôt que de reproduire
+sans réfléchir la simplification historique ("premier radionucléide
+seulement", héritée de `activite_utilisee_bq`). Vérifié précisément :
+`_quantite_avant_consommation` (la quantité physique juste avant une
+consommation) est une grandeur de la SOURCE dans son ensemble, jamais
+spécifique à un radionucléide -- rien à répartir entre plusieurs
+radionucléides, la même fraction s'applique identiquement à chacun. Pas
+de vraie difficulté mathématique : juste une boucle jamais écrite,
+probablement parce que jamais nécessaire en pratique (sources
+consommables actuellement toutes mono-élémentaires, confirmé par
+l'utilisateur).
+
+Nouvelle fonction `activites_par_radionuclide_bq` (généralisation propre,
+pas un correctif ad hoc) : même calcul que l'historique, mais pour
+chaque radionucléide de la source. L'ancienne fonction, utilisée ailleurs
+pour un affichage à valeur unique (colonne "Activité utilisée" sur
+Consommations), n'a volontairement pas été modifiée -- portée limitée au
+sujet demandé, pas de changement de comportement en dehors de lui.
+Hypothèse d'homogénéité assumée explicitement (un mélange homogène
+répartit chaque radionucléide uniformément dans toute la quantité
+physique) plutôt que cachée.
+
+### Testé
+
+231 tests automatisés (13 nouveaux). Vérifié avec une vraie source à
+deux radionucléides (Co-60 5 Bq/g + Cs-137 15 Bq/g) consommée une seule
+fois : les deux contributions apparaissent, correctement et
+indépendamment, dans le calcul direct ET sur la page web -- pas
+seulement la première comme avant cette généralisation.
+
+### Fichiers ajoutés
+
+`app/services/spectre_consommation.py`, `app/templates/spectre_consommation.html`,
+`tests/test_spectre_consommation.py`.
+
+### Fichiers modifiés
+
+`app/services/units.py` (nouvelle fonction `activites_par_radionuclide_bq`),
+`app/main.py` (route `/consumptions/spectre`, `formater_activite_bq`
+enregistrée comme fonction Jinja globale), `app/templates/consumptions.html`
+(lien vers le nouvel outil), `README.md`.

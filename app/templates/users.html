@@ -35,7 +35,7 @@
                 <td>{{ d.username }}</td>
                 <td>{{ d.role_demande.value }}</td>
                 <td>{{ d.commentaire if d.commentaire else "—" }}</td>
-                <td class="mono">{{ d.date_demande.strftime("%Y-%m-%d %H:%M") if d.date_demande else "" }}</td>
+                <td class="mono">{{ d.date_demande | date_fr(avec_heure=True) if d.date_demande else "" }}</td>
                 <td class="actions-cell">
                     <button class="primary" onclick="traiterDemande({{ d.id }}, 'approuver')">Approuver</button>
                     <button class="danger" onclick="traiterDemande({{ d.id }}, 'rejeter')">Rejeter</button>

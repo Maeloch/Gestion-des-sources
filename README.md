@@ -1,6 +1,6 @@
 # Gestion des Sources Radioactives
 
-**Version 0.1.29** — affichée en bas de la barre latérale de l'application. En cas
+**Version 0.1.34** — affichée en bas de la barre latérale de l'application. En cas
 de doute sur la version que tu es en train de tester (par exemple si tu as
 plusieurs dossiers de versions différentes sur ta machine), regarde le pied
 de page : le numéro doit correspondre à celui annoncé dans le message de
@@ -181,6 +181,38 @@ couche (modèle → dépôt de données → logique métier → route). C'est pl
 fichiers qu'une appli "tout dans un seul fichier", mais c'est ce qui permet
 d'ajouter des fonctionnalités une par une sans casser le reste — une bonne
 base pour la suite.
+
+## 4bis. Importer des consommations historiques (28/07/2026)
+
+Pour les consommations jusqu'ici tenues sur des fiches papier : pas de
+bouton d'import dédié dans l'interface (volontairement), mais un script
+en ligne de commande, pensé pour un flux en trois temps -- transcription
+(par exemple par Claude, à partir de scans), relecture/correction du
+tableur par toi (**c'est là qu'a lieu la vérification**), puis import
+"idiot" volontairement peu sophistiqué, le contrôle ayant déjà eu lieu à
+l'étape précédente.
+
+Générer un modèle vide pour cadrer la transcription :
+```bash
+python -m app.scripts.import_consommations_historiques --modele modele.xlsx
+```
+
+Colonnes attendues : ID Source, Date, Masse avant (g), Masse après (g),
+Quantité utilisée, Commentaire, Utilisateur. Au moins l'un de (Masse
+avant, Quantité utilisée) doit être renseigné par ligne. **L'ordre des
+lignes n'a aucune importance** (ni entre elles, ni vis-à-vis des
+consommations déjà en base) : le calcul de quantité restante trie
+toujours par date au moment où il est fait, jamais par ordre
+d'insertion -- vérifié directement plutôt que supposé.
+
+Importer le fichier relu :
+```bash
+python -m app.scripts.import_consommations_historiques mon_fichier.xlsx
+```
+
+Un rapport s'affiche : nombre de consommations créées, et le détail de
+chaque ligne ignorée avec sa raison (source introuvable, date illisible,
+aucune quantité renseignée).
 
 ## 5. Sauvegarder ta base de données
 
@@ -369,6 +401,16 @@ si le problème se répète souvent : arrêter le serveur AVANT de lancer
 qui évite complètement le risque, au prix d'une brève coupure du
 service pendant la mise à jour.
 
+## 5ter. Dates affichées en français (30/07/2026)
+
+Toutes les dates affichées en lecture seule (tableaux, fiche source,
+audit...) sont au format JJ/MM/AAAA plutôt que AAAA-MM-JJ — par
+préférence assumée. Les champs de saisie (`<input type="date">`) et les
+attributs internes utilisés pour le tri chronologique des tableaux
+restent en format ISO : le premier parce que le navigateur l'exige, le
+second parce qu'un tri correct par date en dépend (AAAA-MM-JJ se trie
+correctement comme texte, JJ/MM/AAAA non).
+
 ## 6. Limites connues (état au 10/07/2026)
 
 - Tableaux réglementaires MN 2a et 3a (récolement) toujours en attente —
@@ -502,6 +544,22 @@ l'unité de temps la plus lisible (s, min, h, j ou ans selon sa durée),
 plutôt que toujours en années. L'état physique (solide/liquide/gaz)
 s'affiche avec une icône et une couleur distinctive.
 
+## 7ter. Fiche détaillée par source (28/07/2026)
+
+Cliquer sur l'identifiant d'une source — sur la page Sources elle-même,
+ou partout où il apparaît ailleurs (Radionucléides, Mouvements,
+Consommations, Audit) — amène sur une fiche regroupant tout ce qui la
+concerne sur une seule page : ses informations générales, ses
+radionucléides, son historique de mouvements et de consommations, et
+(si présent) son historique d'audit. Les mêmes calculs que sur la liste
+des sources s'y appliquent (quantité restante, activité actuelle,
+éligibilité à l'emprunt).
+
+Le bouton "Modifier" y renvoie vers la liste des sources, déjà filtrée
+sur cette source précise : le formulaire de modification, assez
+complexe, n'est pas dupliqué sur cette nouvelle page, pour n'avoir
+qu'une seule version à maintenir.
+
 ## 8. Archivage des sources
 
 Une source dont l'état d'utilisation passe à **remisée**, **en déchet**,
@@ -533,11 +591,13 @@ Le tri et la pagination fonctionnent ensemble et, sur Sources et Audit,
 avec les filtres déjà en place (onglets, cases à cocher) : la pagination
 s'applique toujours au résultat déjà filtré, jamais avant.
 
-Sur **Sources**, deux filtres supplémentaires (14/07/2026) : une
-recherche libre sur l'identifiant (ex : taper "SCA-" affiche uniquement
-les identifiants qui contiennent ce texte, insensible à la casse), et un
-menu déroulant pour n'afficher que les sources portant un radionucléide
-donné. Les deux se combinent avec les filtres déjà en place (onglet,
+Sur **Sources**, la recherche libre (généralisée le 28/07/2026, elle
+était jusque-là plus restrictive qu'ailleurs) compare le texte tapé à
+l'identifiant, au(x) radionucléide(s), au lieu, etc. — comme sur les
+autres pages (voir plus bas) plutôt que la seule colonne identifiant.
+Le menu déroulant dédié au filtre par radionucléide, devenu redondant,
+a été retiré : taper un nom de radionucléide dans la recherche libre
+suffit désormais. Se combine avec les filtres déjà en place (onglet,
 statut).
 
 Une recherche libre du même esprit existe aussi sur **Radionucléides,
@@ -546,6 +606,13 @@ le texte tapé à toutes les colonnes visibles de chaque ligne (nom de
 radionucléide, source, lieu, commentaire, utilisateur...), sans liste de
 colonnes à choisir. Sur Audit, elle se combine avec les filtres déjà en
 place (cases à cocher, dates).
+
+**Liens croisés entre pages** (28/07/2026) : partout où un identifiant de
+source, un nom de radionucléide ou un lieu apparaît sur une page qui
+n'est pas la sienne (colonne "Source" sur Radionucléides/Mouvements/
+Consommations/Audit, colonnes radionucléides/lieu sur Sources elle-même),
+c'est maintenant un lien qui amène directement sur la bonne page, avec la
+recherche déjà appliquée sur ce texte précis — plus besoin de retaper.
 
 Pour consommer une source gaz/liquide, un bouton **"Consommer"**
 directement sur sa ligne (page Sources) ouvre la pop-up de consommation
@@ -568,6 +635,28 @@ l'activité (Bq) correspondant à la quantité consommée, calculée à la
 date de CETTE consommation précise (décroissance radioactive appliquée
 depuis la date de référence du radionucléide) — purement pour
 l'affichage, aucune valeur n'est stockée en base.
+
+## 8ter. Spectre-type des consommations (30/07/2026)
+
+Depuis **Consommations**, "Calculer le spectre-type des déchets sur une
+plage de temps →" : estime la composition isotopique des déchets sur une
+période choisie, à partir des sources consommées (supposée
+proportionnelle à leur activité). Trois dates : le début et la fin de la
+plage à examiner, et la date à laquelle calculer le spectre (aujourd'hui
+par défaut, mais n'importe quelle date égale ou postérieure à la fin de
+la plage — la décroissance n'a de sens que vers l'avant dans le temps,
+une date antérieure est refusée avec un message clair plutôt que de
+produire un résultat sans signification physique).
+
+Pour une source à plusieurs radionucléides, chacun est compté
+individuellement (pas seulement le premier, contrairement à la colonne
+"Activité utilisée" ci-dessus, pensée pour un affichage simple ligne par
+ligne) : la même fraction de la quantité physique consommée s'applique à
+chacun, une hypothèse d'homogénéité assumée explicitement (vraie pour un
+mélange de calibration homogène, à garder en tête sinon). Toute
+consommation ignorée (source sans radionucléide exploitable) ou tout
+radionucléide sans période radioactive connue (donc sans décroissance
+calculable) est signalé, jamais silencieux.
 
 ## 9. Import / Export (réservé aux administrateurs)
 

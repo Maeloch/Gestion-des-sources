@@ -31,7 +31,7 @@
                 <td>{{ source.type.value if source.type else "" }}</td>
                 <td>{{ macros.etat_physique_badge(source.etat_physique.value if source.etat_physique else None) }}</td>
                 <td>{{ source.etat_utilisation.value if source.etat_utilisation else "" }}</td>
-                <td>{{ source.date_arrivee }}</td>
+                <td>{{ source.date_arrivee | date_fr }}</td>
                 <td>{{ source.emplacement_actuel.nom if source.emplacement_actuel else source.emplacement_habituel.nom if source.emplacement_habituel else "N/A" }}</td>
                 <td>{{ source.fournisseur if source.fournisseur else "N/A" }}</td>
                 <td>{{ "Oui" if source.matiere_nucleaire else "Non" }}</td>

@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% import "_macros.html" as macros %}
+
+{% block title %}{{ source.id }} — Fiche source{% endblock %}
+{% block page_title %}Source {{ source.id }}{% endblock %}
+
+{% block content %}
+    <p class="page-lead mt-0"><a href="/sources">← Retour à la liste des sources</a></p>
+
+    <div class="card">
+        <div class="actions-row" style="margin:0 0 1rem 0; justify-content:space-between; align-items:center;">
+            <div style="display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
+                <span class="mono" style="font-size:1.15rem; font-weight:600;">{{ source.id }}</span>
+                {{ macros.etat_physique_badge(source.etat_physique.value if source.etat_physique else None) }}
+                {% if archivee %}<span class="badge badge-archived">{{ source.etat_utilisation.value }}</span>
+                {% else %}<span class="badge badge-active">{{ source.etat_utilisation.value }}</span>{% endif %}
+                {% if source.matiere_nucleaire %}<span class="badge badge-mn">MN</span>{% endif %}
+            </div>
+            {% if current_user and current_user.role.value != "lecteur" and (not archivee or current_user.role.value == "admin") %}
+            <div class="actions-row" style="margin:0;">
+                <a href="/sources?recherche={{ source.id | urlencode }}"><button type="button">Modifier</button></a>
+                {% if source.etat_physique.value in ("gaz", "liquide") and not archivee %}
+                <a href="/consumptions?source={{ source.id }}"><button type="button">Consommer</button></a>
+                {% endif %}
+                {% if peut_emprunter %}
+                <a href="/movements?source={{ source.id }}"><button type="button">Emprunter</button></a>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="fiche-grid">
+            <div><span class="fiche-label">Type</span><span>{{ source.type.value }}</span></div>
+            <div><span class="fiche-label">Date d'arrivée</span><span>{{ source.date_arrivee | date_fr }}</span></div>
+            <div><span class="fiche-label">Fournisseur</span><span>{{ source.fournisseur or "—" }}</span></div>
+            <div><span class="fiche-label">Emplacement habituel</span><span>{% if source.emplacement_habituel %}<a href="/locations?recherche={{ source.emplacement_habituel.nom | urlencode }}">{{ source.emplacement_habituel.nom }}</a>{% else %}—{% endif %}</span></div>
+            <div><span class="fiche-label">Emplacement actuel</span><span>{% if source.emplacement_actuel %}<a href="/locations?recherche={{ source.emplacement_actuel.nom | urlencode }}">{{ source.emplacement_actuel.nom }}</a>{% else %}—{% endif %}</span></div>
+            {% if source.etat_physique.value in ("gaz", "liquide") and source.quantite_calculee is not none %}
+            <div><span class="fiche-label">Quantité restante</span><span>{{ arrondir_scientifique(source.quantite_calculee) }} {{ source.unite_quantite.value if source.unite_quantite else "" }}</span></div>
+            {% endif %}
+            <div><span class="fiche-label">Numéro certificat</span><span>{{ source.num_certificat_etalonnage or "—" }}</span></div>
+            <div><span class="fiche-label">Numéro fabricant</span><span>{{ source.num_source_fabricant or "—" }}</span></div>
+            {% if source.lien_dossier_admin %}
+            <div><span class="fiche-label">Lien dossier</span><span><a href="{{ source.lien_dossier_admin }}" target="_blank" rel="noopener">Ouvrir →</a></span></div>
+            {% endif %}
+        </div>
+        {% if source.commentaire %}
+        <p class="page-lead" style="margin-top:0.9rem;">{{ source.commentaire }}</p>
+        {% endif %}
+    </div>
+
+    <h3>Radionucléides</h3>
+    <div class="card">
+        {% if source.radionuclides %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Nom</th><th>Activité de référence</th><th>Activité actuelle</th>
+                    <th>Date de référence</th><th>Période</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for rn in source.radionuclides %}
+                <tr>
+                    <td class="mono"><a href="/radionuclides?recherche={{ rn.nom | urlencode }}">{{ rn.nom }}</a></td>
+                    <td class="mono">{{ arrondir_scientifique(rn.activite) }} {{ rn.unite_activite }}</td>
+                    <td class="mono">{{ rn.activite_actuelle_affichee if rn.activite_actuelle_affichee else "—" }}</td>
+                    <td>{{ rn.date_reference | date_fr }}</td>
+                    <td>{{ formater_duree(rn.periode) if rn.periode else "—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="page-lead" style="margin:0;">Aucun radionucléide enregistré pour cette source.</p>
+        {% endif %}
+    </div>
+
+    <h3>Mouvements</h3>
+    <div class="card">
+        {% if mouvements %}
+        <table>
+            <thead>
+                <tr><th>Date</th><th>De</th><th>Vers</th><th>Retour prévu</th><th>Retour réel</th><th>Commentaire</th></tr>
+            </thead>
+            <tbody>
+                {% for m in mouvements %}
+                <tr>
+                    <td>{{ m.timestamp | date_fr }}</td>
+                    <td>{% if m.from_location %}<a href="/locations?recherche={{ m.from_location.nom | urlencode }}">{{ m.from_location.nom }}</a>{% else %}—{% endif %}</td>
+                    <td>{% if m.to_location %}<a href="/locations?recherche={{ m.to_location.nom | urlencode }}">{{ m.to_location.nom }}</a>{% else %}—{% endif %}</td>
+                    <td>{{ m.date_retour_prevue | date_fr }}</td>
+                    <td>{% if m.date_retour_reelle %}{{ m.date_retour_reelle | date_fr }}{% else %}<span class="badge badge-active">en cours</span>{% endif %}</td>
+                    <td>{{ m.commentaire or "—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="page-lead" style="margin:0;">Aucun mouvement enregistré pour cette source.</p>
+        {% endif %}
+    </div>
+
+    <h3>Consommations</h3>
+    <div class="card">
+        {% if consommations %}
+        <table>
+            <thead>
+                <tr><th>Date</th><th>Masse avant</th><th>Masse après</th><th>Quantité utilisée</th><th>Commentaire</th><th>Utilisateur</th></tr>
+            </thead>
+            <tbody>
+                {% for c in consommations %}
+                <tr>
+                    <td>{{ c.timestamp | date_fr }}</td>
+                    <td class="mono">{{ c.masse_avant if c.masse_avant is not none else "—" }}</td>
+                    <td class="mono">{{ c.masse_apres if c.masse_apres is not none else "—" }}</td>
+                    <td class="mono">{{ arrondir_scientifique(c.quantite_utilisee) }}</td>
+                    <td>{{ c.commentaire or "—" }}</td>
+                    <td>{{ c.utilisateur or "—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="page-lead" style="margin:0;">Aucune consommation enregistrée pour cette source.</p>
+        {% endif %}
+    </div>
+
+    {% if audit_logs %}
+    <h3>Historique (audit)</h3>
+    <div class="card">
+        <table>
+            <thead><tr><th>Date</th><th>Action</th><th>Utilisateur</th><th>Champ modifié</th><th>Avant</th><th>Après</th></tr></thead>
+            <tbody>
+                {% for log in audit_logs %}
+                <tr>
+                    <td>{{ log.timestamp | date_fr(avec_heure=True) if log.timestamp else "—" }}</td>
+                    <td>{{ log.action.value }}</td>
+                    <td>{{ log.utilisateur }}</td>
+                    <td>{{ log.champ_modifie or "—" }}</td>
+                    <td>{{ log.valeur_avant or "—" }}</td>
+                    <td>{{ log.valeur_apres or "—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+{% endblock %}

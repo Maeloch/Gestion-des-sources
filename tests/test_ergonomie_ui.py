@@ -5,7 +5,14 @@ consommer converti en texte avec suggestions (au lieu d'un menu déroulant
 pénible avec beaucoup de sources)."""
 
 
-def test_page_sources_liste_les_radionuclides_distincts_pour_le_filtre(admin_client, default_location):
+def test_page_sources_recherche_generalisee_pas_de_menu_deroulant_dedie(admin_client, default_location):
+    """28/07/2026 : la recherche sur Sources était plus restrictive que
+    sur les autres pages (ne cherchait que l'identifiant), avec un menu
+    déroulant séparé pour filtrer par radionucléide. Généralisée pour
+    utiliser la même fonction que Radionucléides/Mouvements/Lieux/
+    Consommations (texteCorrespond, voir filtrable.js) : un radionucléide
+    se retrouve maintenant directement en tapant son nom dans la
+    recherche libre, sans menu dédié -- devenu inutile, retiré."""
     admin_client.post("/sources/", json={
         "id": "SRC-FILTRE-1", "type": "scellée", "etat_physique": "solide",
         "etat_utilisation": "en utilisation", "date_arrivee": "2020-01-01",
@@ -17,9 +24,12 @@ def test_page_sources_liste_les_radionuclides_distincts_pour_le_filtre(admin_cli
     })
     page = admin_client.get("/sources")
     assert page.status_code == 200
-    assert 'id="filterRadionuclide"' in page.text
-    assert '<option value="Am-241">Am-241</option>' in page.text
+    assert 'id="filterRadionuclide"' not in page.text  # menu déroulant retiré
     assert 'id="searchId"' in page.text
+    # data-sort-radionuclides (déjà utilisé pour le tri) porte l'info que
+    # texteCorrespond() exploite pour la recherche généralisée -- toujours
+    # présent sur chaque ligne, c'est lui qui rend le menu inutile.
+    assert 'data-sort-radionuclides="Am-241"' in page.text
 
 
 def test_page_sources_ligne_porte_les_radionuclides_pour_le_filtre_js(admin_client, default_location):
@@ -37,6 +47,17 @@ def test_page_sources_ligne_porte_les_radionuclides_pour_le_filtre_js(admin_clie
     })
     page = admin_client.get("/sources")
     assert 'data-sort-radionuclides="Ra-226"' in page.text
+
+
+def test_page_sources_a_le_lien_gerer_tous_les_lieux(admin_client, default_location):
+    """28/07/2026 : le bouton "+ Lieu" existait déjà sur Sources, mais
+    sans le lien "Gérer tous les lieux" qui l'accompagne pourtant déjà
+    sur Mouvements -- même patron que pour les radionucléides
+    (bouton "+ Ajouter un radionucléide" + lien "Gérer tous les
+    radionucléides"), généralisé ici pour les lieux."""
+    page = admin_client.get("/sources")
+    assert 'href="/locations"' in page.text
+    assert "Gérer tous les lieux" in page.text
 
 
 def test_bouton_consommer_present_sur_source_consommable_active(admin_client, default_location):

@@ -171,6 +171,20 @@ def quantite_restante_calculee(db, source) -> Optional[float]:
     return source.quantite
 
 
+def date_fr(valeur, avec_heure: bool = False) -> str:
+    """Formate une date ou un datetime au format français JJ/MM/AAAA
+    (JJ/MM/AAAA HH:MM si avec_heure) -- demandé le 30/07/2026 ("par pur
+    chauvinisme", assumé). Utilisée comme filtre Jinja (`{{ x | date_fr }}`)
+    partout où une date est affichée en lecture seule -- les champs
+    <input type="date"> d'un formulaire, eux, continuent d'utiliser le
+    format ISO (JJ/MM/AAAA ne serait pas compris par le navigateur)."""
+    if valeur is None:
+        return "—"
+    if avec_heure:
+        return valeur.strftime("%d/%m/%Y %H:%M")
+    return valeur.strftime("%d/%m/%Y")
+
+
 def activite_actuelle_bq(radionuclide, a_la_date=None) -> Optional[float]:
     """Activité d'un radionucléide à une date donnée (décroissance depuis
     sa date de référence appliquée), normalisée en Bq (ou Bq/g pour une
@@ -263,6 +277,59 @@ def activite_utilisee_bq(db, source, consumption) -> Optional[float]:
     if not quantite_avant or quantite_avant <= 0:
         return None
     return activite_a_la_date * (consumption.quantite_utilisee / quantite_avant)
+
+
+def activites_par_radionuclide_bq(db, source, consumption) -> dict:
+    """Généralisation d'activite_utilisee_bq à TOUS les radionucléides
+    d'une source, pas seulement le premier -- demandé le 30/07/2026, en
+    remettant en question la simplification historique plutôt qu'en la
+    reproduisant sans y réfléchir.
+
+    Il n'y a pas de vraie difficulté mathématique à généraliser : la
+    quantité physique consommée (_quantite_avant_consommation) est déjà
+    une grandeur de la SOURCE dans son ensemble (masse ou volume total),
+    jamais spécifique à un radionucléide -- rien à "répartir" entre eux.
+    La même fraction consommée (quantité utilisée / quantité juste avant)
+    s'applique donc identiquement à CHAQUE radionucléide de la source,
+    exactement comme le fait déjà cette fonction pour le premier.
+
+    Hypothèse sous-jacente (vraie pour un mélange homogène -- typiquement
+    le cas d'une solution de calibration à plusieurs isotopes, mais à
+    garder en tête si ce n'était pas le cas) : chaque radionucléide est
+    uniformément réparti dans toute la quantité physique de la source --
+    consommer X% de la masse/volume consomme X% de CHAQUE radionucléide,
+    pas plus l'un que l'autre.
+
+    Renvoie {nom_radionuclide: activité_bq}, un radionucléide absent du
+    dict si son propre calcul échoue (période inconnue, activité
+    spécifique sans concentration exploitable...) -- jamais une exception
+    pour un seul radionucléide en défaut parmi plusieurs.
+    """
+    resultat = {}
+    if not source.radionuclides or not consumption.quantite_utilisee:
+        return resultat
+
+    date_conso = consumption.timestamp.date() if consumption.timestamp else datetime.today().date()
+    quantite_avant = None  # calculée paresseusement, une seule fois, seulement si un radionucléide en a besoin (mode non spécifique)
+
+    for rn in source.radionuclides:
+        if not rn.periode:
+            continue
+        activite_a_la_date = activite_actuelle_bq(rn, a_la_date=date_conso)
+        if activite_a_la_date is None:
+            continue
+
+        if rn.activite_est_specifique:
+            resultat[rn.nom] = activite_a_la_date * consumption.quantite_utilisee
+            continue
+
+        if quantite_avant is None:
+            quantite_avant = _quantite_avant_consommation(source, consumption) or 0
+        if quantite_avant <= 0:
+            continue
+        resultat[rn.nom] = activite_a_la_date * (consumption.quantite_utilisee / quantite_avant)
+
+    return resultat
 
 
 def arrondir_scientifique(valeur: float, incertitude: float = None) -> str:

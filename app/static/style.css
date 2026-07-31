@@ -334,6 +334,15 @@ td.mono, .table-id { font-family: var(--font-mono); font-size: 0.83rem; }
 .sortable-th.sorted-asc::after { content: '↑'; opacity: 1; color: var(--accent-dark); }
 .sortable-th.sorted-desc::after { content: '↓'; opacity: 1; color: var(--accent-dark); }
 
+/* ---- Fiche détaillée par source ---- */
+.fiche-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.9rem 1.4rem;
+}
+.fiche-grid > div { display: flex; flex-direction: column; gap: 0.15rem; }
+.fiche-label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+
 /* ---- Recherche libre ---- */
 .recherche-libre { margin-bottom: 0.75rem; }
 .recherche-libre input {

@@ -37,11 +37,11 @@
                 data-sort-dateref="{{ radionuclide.date_reference }}"
                 data-sort-periode="{{ radionuclide.periode if radionuclide.periode is not none else '' }}">
                 <td>{{ radionuclide.id }}</td>
-                <td>{{ radionuclide.source_id }}</td>
+                <td class="table-id"><a href="/sources/{{ radionuclide.source_id | urlencode }}/fiche">{{ radionuclide.source_id }}</a></td>
                 <td>{{ radionuclide.nom }}</td>
                 <td class="mono">{{ radionuclide.activite_reference_affichee }}{{ " (spécifique)" if radionuclide.activite_est_specifique else "" }}</td>
                 <td class="mono">{{ radionuclide.activite_actuelle_affichee if radionuclide.activite_actuelle_affichee else "N/A (pas de période renseignée)" }}</td>
-                <td>{{ radionuclide.date_reference }}</td>
+                <td>{{ radionuclide.date_reference | date_fr }}</td>
                 <td class="mono">{{ radionuclide.periode_affichee if radionuclide.periode_affichee else "N/A" }}</td>
                 {% if current_user and current_user.role.value != "lecteur" %}
                 <td class="actions-cell">

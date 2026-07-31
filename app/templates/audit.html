@@ -56,11 +56,11 @@
         <tbody>
             {% for log in logs %}
             <tr data-action="{{ log.action.value }}" data-table="{{ log.table_modifiee }}" data-date="{{ log.timestamp.strftime('%Y-%m-%d') if log.timestamp else '' }}" data-ts="{{ log.timestamp.isoformat() if log.timestamp else '' }}">
-                <td class="mono">{{ log.timestamp.strftime("%Y-%m-%d %H:%M") if log.timestamp else "" }}</td>
+                <td class="mono">{{ log.timestamp | date_fr(avec_heure=True) if log.timestamp else "" }}</td>
                 <td>{{ log.utilisateur }}</td>
                 <td><span class="badge badge-active">{{ log.action.value }}</span></td>
                 <td>{{ log.table_modifiee }}</td>
-                <td class="table-id">{{ log.id_source if log.id_source else "—" }}</td>
+                <td class="table-id">{% if log.id_source %}<a href="/sources/{{ log.id_source | urlencode }}/fiche">{{ log.id_source }}</a>{% else %}—{% endif %}</td>
                 <td>{{ log.champ_modifie if log.champ_modifie else "—" }}</td>
                 <td class="mono">{{ log.valeur_avant if log.valeur_avant else "—" }}</td>
                 <td class="mono">{{ log.valeur_apres if log.valeur_apres else "—" }}</td>

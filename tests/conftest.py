@@ -50,6 +50,23 @@ def client(db_engine):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture()
+def db_session(db_engine):
+    """Session directe sur le même moteur que admin_client -- ajoutée le
+    28/07/2026 pour tester un script autonome (import de consommations
+    historiques) qui travaille directement avec une session de base de
+    données, hors du chemin HTTP habituel de ce projet. Utilisée
+    conjointement avec admin_client dans un même test (les deux
+    partagent le même db_engine) : sources créées via l'API comme
+    d'habitude, script testé directement sur cette même base."""
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 def register_and_login(client: TestClient, username: str, role: str = None, admin_client: TestClient = None) -> TestClient:
     """Crée un utilisateur, le promeut au rôle demandé si besoin (nécessite
     un client déjà connecté en admin), puis renvoie un TestClient connecté

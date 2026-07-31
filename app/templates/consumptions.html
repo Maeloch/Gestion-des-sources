@@ -5,6 +5,7 @@
 
 {% block content %}
     <p class="page-lead">Uniquement pour les sources gaz (pression) ou liquide (masse) dont la quantité est suivie (calculée, ou renseignée via une quantité initiale). Enregistrer une consommation diminue automatiquement la quantité restante affichée sur la source.</p>
+    <p class="page-lead mt-0"><a href="/consumptions/spectre">Calculer le spectre-type des déchets sur une plage de temps →</a></p>
 
     {% if current_user and current_user.role.value != "lecteur" %}
     <div class="actions-row">
@@ -35,10 +36,10 @@
                 data-sort-date="{{ consumption.timestamp.isoformat() if consumption.timestamp else '' }}"
                 data-sort-commentaire="{{ consumption.commentaire if consumption.commentaire else '' }}">
                 <td>{{ consumption.id }}</td>
-                <td class="table-id">{{ consumption.source_id }}</td>
+                <td class="table-id"><a href="/sources/{{ consumption.source_id | urlencode }}/fiche">{{ consumption.source_id }}</a></td>
                 <td class="mono">{{ consumption.quantite_utilisee_affichee }}{% if consumption.quantite_utilisee == 0 %} (pesée de contrôle){% endif %}</td>
                 <td class="mono">{{ consumption.activite_utilisee_affichee if consumption.activite_utilisee_affichee else "—" }}</td>
-                <td class="mono">{{ consumption.timestamp }}</td>
+                <td class="mono">{{ consumption.timestamp | date_fr }}</td>
                 <td>{{ consumption.commentaire if consumption.commentaire else "—" }}</td>
                 {% if current_user and current_user.role.value != "lecteur" %}
                 <td class="actions-cell">

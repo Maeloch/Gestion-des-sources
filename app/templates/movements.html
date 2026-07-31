@@ -40,12 +40,12 @@
                 data-sort-reel="{{ m.date_retour_reelle if m.date_retour_reelle else '' }}"
                 data-sort-commentaire="{{ m.commentaire if m.commentaire else '' }}"
                 data-sort-par="{{ m.utilisateur if m.utilisateur else '' }}">
-                <td class="table-id">{{ m.source_id }}</td>
-                <td>{{ m.from_location.nom if m.from_location else "—" }}</td>
-                <td>{{ m.to_location.nom if m.to_location else "—" }}</td>
-                <td class="mono">{{ m.timestamp.strftime("%Y-%m-%d") if m.timestamp else "" }}</td>
-                <td class="mono">{{ m.date_retour_prevue if m.date_retour_prevue else "—" }}</td>
-                <td>{% if m.date_retour_reelle %}<span class="mono">{{ m.date_retour_reelle }}</span>{% else %}<span class="badge badge-active">en cours</span>{% endif %}</td>
+                <td class="table-id"><a href="/sources/{{ m.source_id | urlencode }}/fiche">{{ m.source_id }}</a></td>
+                <td>{% if m.from_location %}<a href="/locations?recherche={{ m.from_location.nom | urlencode }}">{{ m.from_location.nom }}</a>{% else %}—{% endif %}</td>
+                <td>{% if m.to_location %}<a href="/locations?recherche={{ m.to_location.nom | urlencode }}">{{ m.to_location.nom }}</a>{% else %}—{% endif %}</td>
+                <td class="mono">{{ m.timestamp | date_fr }}</td>
+                <td class="mono">{{ m.date_retour_prevue | date_fr }}</td>
+                <td>{% if m.date_retour_reelle %}<span class="mono">{{ m.date_retour_reelle | date_fr }}</span>{% else %}<span class="badge badge-active">en cours</span>{% endif %}</td>
                 <td>{{ m.commentaire if m.commentaire else "" }}</td>
                 <td>{{ m.utilisateur if m.utilisateur else "" }}</td>
                 {% if current_user.role.value != "lecteur" %}

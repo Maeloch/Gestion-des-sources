@@ -9,13 +9,7 @@
 
     <div class="actions-row" style="justify-content:space-between; flex-wrap:wrap; gap:0.6rem;">
         <div class="filter-menu" style="display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
-            <input type="text" id="searchId" placeholder="Rechercher un identifiant (ex : SCA-)" style="width:auto; min-width:220px;">
-            <select id="filterRadionuclide" style="width:auto;">
-                <option value="">-- Tous les radionucléides --</option>
-                {% for nom in radionuclides_distincts %}
-                <option value="{{ nom }}">{{ nom }}</option>
-                {% endfor %}
-            </select>
+            <input type="text" id="searchId" placeholder="🔎 Rechercher (identifiant, radionucléide, lieu...)" style="width:auto; min-width:260px;">
             <button id="filterBtn">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
                 Filtrer <span id="filterCount" class="mono text-muted"></span>
@@ -45,7 +39,11 @@
         </div>
         {% endif %}
     </div>
-    <p class="page-lead mt-0"><a href="/radionuclides">Gérer tous les radionucléides →</a></p>
+    <p class="page-lead mt-0">
+        <a href="/radionuclides">Gérer tous les radionucléides →</a>
+        &nbsp;·&nbsp;
+        <a href="/locations">Gérer tous les lieux →</a>
+    </p>
 
     <div class="tabs">
         <button class="tab active" data-tab="scellee">Scellées <span class="count" data-count="scellee"></span></button>
@@ -90,7 +88,7 @@
                 data-sort-fournisseur="{{ source.fournisseur or '' }}"
                 data-sort-emplacement="{{ source.emplacement_actuel.nom if source.emplacement_actuel else '' }}"
                 data-sort-mn="{{ 'Oui' if source.matiere_nucleaire else 'Non' }}">
-                <td class="table-id">{{ source.id }}</td>
+                <td class="table-id"><a href="/sources/{{ source.id | urlencode }}/fiche">{{ source.id }}</a></td>
                 <td>{{ macros.etat_physique_badge(source.etat_physique.value if source.etat_physique else None) }}</td>
                 <td>
                     {% if archivee %}<span class="badge badge-archived">{{ source.etat_utilisation.value }}</span>
@@ -98,7 +96,7 @@
                 </td>
                 <td>
                     {% for rn in source.radionuclides %}
-                    <div class="mono" style="white-space:nowrap;">{{ rn.nom }}</div>
+                    <div class="mono" style="white-space:nowrap;"><a href="/radionuclides?recherche={{ rn.nom | urlencode }}">{{ rn.nom }}</a></div>
                     {% else %}—
                     {% endfor %}
                 </td>
@@ -113,9 +111,9 @@
                         {{ arrondir_scientifique(qte_affichee) }} {{ source.unite_quantite.value if source.unite_quantite else "" }}
                     {% else %}—{% endif %}
                 </td>
-                <td>{{ source.date_arrivee }}</td>
+                <td>{{ source.date_arrivee | date_fr }}</td>
                 <td>{{ source.fournisseur if source.fournisseur else "—" }}</td>
-                <td>{{ source.emplacement_actuel.nom if source.emplacement_actuel else "—" }}</td>
+                <td>{% if source.emplacement_actuel %}<a href="/locations?recherche={{ source.emplacement_actuel.nom | urlencode }}">{{ source.emplacement_actuel.nom }}</a>{% else %}—{% endif %}</td>
                 <td>{% if source.matiere_nucleaire %}<span class="badge badge-mn">MN</span>{% endif %}</td>
                 {% if current_user.role.value != "lecteur" %}
                 <td class="actions-cell">
@@ -151,8 +149,7 @@
             const checked = Array.from(document.querySelectorAll('.statusFilter:checked')).map(c => c.value);
             const counts = { scellee: 0, 'non-scellee': 0, consommable: 0 };
             let visibleInTab = 0;
-            const recherche = document.getElementById('searchId').value.trim().toLowerCase();
-            const rnChoisi = document.getElementById('filterRadionuclide').value;
+            const recherche = document.getElementById('searchId').value.trim();
 
             // La colonne "Quantité restante" n'a de sens que pour les
             // sources gaz/liquide (onglet Consommables) -- masquée
@@ -164,16 +161,16 @@
                 const matchesStatus = checked.includes(row.dataset.etat);
                 if (matchesStatus) counts[row.dataset.tab]++;
                 const matchesTab = row.dataset.tab === activeTab;
-                // Recherche libre sur l'identifiant : simple sous-chaîne,
-                // insensible à la casse -- couvre naturellement un
-                // préfixe ("SCA-") sans imposer une syntaxe particulière.
-                const matchesRecherche = !recherche || row.dataset.sortId.toLowerCase().includes(recherche);
-                // data-sort-radionuclides existe déjà (utilisé pour le tri) :
-                // réutilisé ici tel quel, une simple liste séparée par
-                // virgules -- pas besoin d'un attribut dédié en plus.
-                const rnDeLaLigne = (row.dataset.sortRadionuclides || '').split(',').map(s => s.trim());
-                const matchesRn = !rnChoisi || rnDeLaLigne.includes(rnChoisi);
-                const visible = matchesStatus && matchesTab && matchesRecherche && matchesRn;
+                // Recherche libre généralisée (28/07/2026) : même fonction
+                // que sur Radionucléides/Mouvements/Lieux/Consommations
+                // (voir filtrable.js) -- couvre l'identifiant, le(s)
+                // radionucléide(s), le lieu, etc. plutôt que la seule
+                // colonne identifiant. Le menu déroulant dédié aux
+                // radionucléides devient inutile dans ces conditions :
+                // taper le nom d'un radionucléide dans ce champ le trouve
+                // déjà tout seul.
+                const matchesRecherche = texteCorrespond(row, recherche);
+                const visible = matchesStatus && matchesTab && matchesRecherche;
                 row.dataset.filtreOk = visible ? 'true' : 'false';
                 row.style.display = visible ? '' : 'none';
                 if (visible) visibleInTab++;
@@ -206,7 +203,6 @@
 
         document.querySelectorAll('.statusFilter').forEach(cb => cb.addEventListener('change', applyFilters));
         document.getElementById('searchId').addEventListener('input', applyFilters);
-        document.getElementById('filterRadionuclide').addEventListener('change', applyFilters);
         document.getElementById('filterAll').addEventListener('click', () => {
             document.querySelectorAll('.statusFilter').forEach(cb => cb.checked = true);
             applyFilters();
@@ -221,6 +217,14 @@
         filterBtn.addEventListener('click', (e) => { e.stopPropagation(); filterPanel.classList.toggle('open'); });
         document.addEventListener('click', () => filterPanel.classList.remove('open'));
         filterPanel.addEventListener('click', (e) => e.stopPropagation());
+
+        // Préremplissage depuis ?recherche=XXX dans l'URL -- même
+        // principe que rendreFiltrable() (voir filtrable.js), pour un
+        // lien entrant depuis une autre page (ex: cliquer sur un nom de
+        // radionucléide dans le tableau Sources amène sur Radionucléides
+        // avec ce nom déjà recherché).
+        const rechercheDepuisUrl = new URLSearchParams(window.location.search).get('recherche');
+        if (rechercheDepuisUrl) document.getElementById('searchId').value = rechercheDepuisUrl;
 
         applyFilters();
         rendreTableTriable('sourcesTable');
@@ -450,6 +454,17 @@
             document.getElementById('sourceModal').classList.add('open');
         }
 
+        // Conversion d'une date ISO (AAAA-MM-JJ, telle que reçue du
+        // serveur en JSON) vers le format français JJ/MM/AAAA -- demandé
+        // le 30/07/2026. Le pendant JS du filtre Jinja date_fr (voir
+        // units.py), nécessaire ici parce que ce texte est construit en
+        // JavaScript, pas dans un template.
+        function dateFr(isoDate) {
+            if (!isoDate) return isoDate;
+            const [annee, mois, jour] = isoDate.split('-');
+            return `${jour}/${mois}/${annee}`;
+        }
+
         async function importerDepuisCertificat(file) {
             if (!file) return;
             const formData = new FormData();
@@ -482,7 +497,7 @@
                 const details = [];
                 if (r.radionuclide_nom) details.push(`radionucléide ${r.radionuclide_nom}`);
                 if (r.activite != null) details.push(`activité ${r.activite} ${r.unite_activite || ''}${r.activite_est_specifique ? ' (spécifique)' : ''}`);
-                if (r.date_reference) details.push(`référence du ${r.date_reference}`);
+                if (r.date_reference) details.push(`référence du ${dateFr(r.date_reference)}`);
                 if (r.incertitude_pourcent != null) details.push(`incertitude ±${r.incertitude_pourcent}%`);
                 hint.innerHTML = details.length
                     ? `Extrait du certificat (à vérifier) : ${details.join(', ')}. ` +
