@@ -3125,3 +3125,44 @@ corrigé, export Excel), `app/main.py` (route d'export, logique partagée),
 `tests/test_consumption_movement.py`,
 `tests/test_import_consommations_historiques.py`,
 `tests/test_spectre_consommation.py`, `README.md`.
+
+---
+
+## 43. V0.1.36 (31/07/2026) : hauteur des boutons harmonisée, diagnostic 405
+
+### Boutons Annuler/Enregistrer/Supprimer, hauteur incohérente
+
+Signalé directement : la largeur différente entre les trois boutons est
+normale (texte de longueur différente), la hauteur ne l'était pas.
+`.actions-row` (flex) n'imposait pas d'`align-items` explicite -- ajouté
+sur les trois pop-up concernées (Consommations, Radionucléides, Lieux),
+sur le conteneur extérieur ET le conteneur imbriqué (Annuler/Enregistrer),
+pour une hauteur cohérente entre les trois boutons quelle que soit
+l'imbrication.
+
+### DELETE /consumptions/9 → 405 Method Not Allowed, date non prise en compte
+
+Signalé comme un bug, mais non reproductible sur le code de la V0.1.35 :
+`DELETE /consumptions/9` renvoie 204 (vérifié avec un vrai serveur, base
+neuve, neuf consommations créées puis la neuvième supprimée exactement
+comme dans le journal transmis), et la modification de date fonctionne
+correctement (vérifié aussi). Un 405 sur cette route précise, combiné à
+une date silencieusement ignorée alors que le commentaire et la quantité
+passent (exactement ce que donnerait un serveur qui ignore un champ
+inconnu), pointe fortement vers une version de l'application antérieure
+à la V0.1.35 (celle où le champ `timestamp` et la route DELETE ont été
+ajoutés) encore active côté utilisateur -- pas un défaut du code actuel.
+À confirmer en vérifiant le numéro de version affiché en bas de la barre
+latérale de l'application réellement lancée.
+
+### Testé
+
+244 tests toujours passants (aucun changement fonctionnel, uniquement du
+CSS). Comportement DELETE et PATCH (date) revérifiés manuellement avec
+un vrai serveur sur une base neuve, en reproduisant exactement le
+scénario du journal transmis.
+
+### Fichiers modifiés
+
+`app/templates/{consumptions,locations,radionuclides}.html` (`align-items`
+explicite sur les conteneurs de boutons), `README.md`.

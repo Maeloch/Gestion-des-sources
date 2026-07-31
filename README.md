@@ -1,6 +1,6 @@
 # Gestion des Sources Radioactives
 
-**Version 0.1.35** — affichée en bas de la barre latérale de l'application. En cas
+**Version 0.1.36** — affichée en bas de la barre latérale de l'application. En cas
 de doute sur la version que tu es en train de tester (par exemple si tu as
 plusieurs dossiers de versions différentes sur ta machine), regarde le pied
 de page : le numéro doit correspondre à celui annoncé dans le message de
