@@ -53,11 +53,17 @@ class ConsumptionUpdate(BaseModel):
     suis jamais à l'abri de mal renseigner des valeurs". Chaque champ
     fourni remplace l'ancienne valeur ; le reste est inchangé. Toute
     modification est tracée dans l'audit (voir la route), pour concilier
-    le droit à l'erreur avec un minimum de traçabilité."""
+    le droit à l'erreur avec un minimum de traçabilité.
+
+    `timestamp` (date seule, JJ/MM/AAAA côté formulaire) ajoutée le
+    31/07/2026 : la date pouvait déjà être fausse dès la première saisie
+    (import d'une fiche mal transcrite, notamment), sans possibilité de
+    la corriger après coup -- seule la valeur l'était."""
     quantite_utilisee: Optional[float] = None
     masse_avant: Optional[float] = None
     masse_apres: Optional[float] = None
     commentaire: Optional[str] = None
+    timestamp: Optional[datetime] = None
 
 class Consumption(ConsumptionBase):
     model_config = ConfigDict(from_attributes=True)

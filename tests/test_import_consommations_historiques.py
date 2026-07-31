@@ -141,6 +141,68 @@ def test_ligne_sans_aucune_quantite_ignoree_avec_raison(admin_client, db_session
     assert "quantité" in rapport["lignes_ignorees"][0]["raison"]
 
 
+def test_doublon_avec_existant_en_base_signale_mais_pas_bloque(admin_client, db_session, default_location, tmp_path):
+    """31/07/2026, cas réel signalé : le même document importé deux fois
+    a dupliqué tous les prélèvements. Doit être signalé clairement, mais
+    ne doit PAS bloquer l'import (deux prélèvements réels le même jour
+    restent possibles -- reste un import "idiot")."""
+    admin_client.post("/sources/", json={
+        "id": "SRC-DOUBLON-BASE", "type": "non-scellée", "etat_physique": "liquide",
+        "etat_utilisation": "en utilisation", "date_arrivee": "2018-01-01",
+        "emplacement_habituel_id": default_location, "quantite_initiale": 200, "unite_quantite": "g",
+    })
+    admin_client.post("/consumptions/", json={
+        "source_id": "SRC-DOUBLON-BASE", "masse_avant": 200, "masse_apres": 190,
+    })
+    # Cette consommation existante est datée d'aujourd'hui (comportement
+    # par défaut) -- le fichier réimporté vise donc la même date.
+    from datetime import date
+    chemin = _ecrire(tmp_path, [["SRC-DOUBLON-BASE", date.today().strftime("%d/%m/%Y"), 190, 180, None, "reimport par erreur", ""]])
+
+    rapport = importer_consommations_historiques(chemin, db_session)
+
+    assert rapport["consommations_creees"] == 1  # créée quand même, pas bloquée
+    assert len(rapport["doublons_potentiels"]) == 1
+    assert rapport["doublons_potentiels"][0]["source_id"] == "SRC-DOUBLON-BASE"
+
+
+def test_doublon_entre_deux_lignes_du_meme_fichier_signale(admin_client, db_session, default_location, tmp_path):
+    admin_client.post("/sources/", json={
+        "id": "SRC-DOUBLON-FICHIER", "type": "non-scellée", "etat_physique": "liquide",
+        "etat_utilisation": "en utilisation", "date_arrivee": "2018-01-01",
+        "emplacement_habituel_id": default_location, "quantite_initiale": 200, "unite_quantite": "g",
+    })
+    chemin = _ecrire(tmp_path, [
+        ["SRC-DOUBLON-FICHIER", "01/01/2021", 170, 165, None, "premiere ligne", ""],
+        ["SRC-DOUBLON-FICHIER", "01/01/2021", 170, 165, None, "copier-coller en trop", ""],
+    ])
+
+    rapport = importer_consommations_historiques(chemin, db_session)
+
+    assert rapport["consommations_creees"] == 2
+    assert len(rapport["doublons_potentiels"]) == 1
+    assert rapport["doublons_potentiels"][0]["ligne"] == 3  # la seconde ligne, pas la première
+
+
+def test_meme_source_dates_differentes_pas_signalee_comme_doublon(admin_client, db_session, default_location, tmp_path):
+    """Deux prélèvements réels à des dates différentes ne sont pas des
+    doublons -- ne doivent jamais être signalés à tort."""
+    admin_client.post("/sources/", json={
+        "id": "SRC-PAS-DOUBLON", "type": "non-scellée", "etat_physique": "liquide",
+        "etat_utilisation": "en utilisation", "date_arrivee": "2018-01-01",
+        "emplacement_habituel_id": default_location, "quantite_initiale": 200, "unite_quantite": "g",
+    })
+    chemin = _ecrire(tmp_path, [
+        ["SRC-PAS-DOUBLON", "10/03/2019", 200, 190, None, "", ""],
+        ["SRC-PAS-DOUBLON", "15/06/2020", 190, 180, None, "", ""],
+    ])
+
+    rapport = importer_consommations_historiques(chemin, db_session)
+
+    assert rapport["consommations_creees"] == 2
+    assert rapport["doublons_potentiels"] == []
+
+
 def test_ligne_vide_ignoree_silencieusement(admin_client, db_session, default_location, tmp_path):
     """Une ligne complètement vide (ID Source absent) n'est pas une
     erreur -- probablement juste une ligne blanche dans le fichier."""

@@ -46,7 +46,6 @@
                 {% if current_user and current_user.role.value != "lecteur" %}
                 <td class="actions-cell">
                     <button onclick="openEditModal({{ radionuclide.id }})">Modifier</button>
-                    <button onclick="deleteRadionuclide({{ radionuclide.id }})">Supprimer</button>
                 </td>
                 {% endif %}
             </tr>
@@ -102,7 +101,13 @@
                 <label for="lien_laraweb">Lien LaraWeb (facultatif) :</label>
                 <input type="text" id="lien_laraweb">
 
-                <button type="submit">Enregistrer</button>
+                <div class="actions-row" style="justify-content:space-between; margin-top:1rem;">
+                    <button type="button" class="danger" id="rnDeleteBtn" style="display:none;" onclick="deleteRadionuclide(editingRadionuclideId)">Supprimer</button>
+                    <div class="actions-row" style="margin:0;">
+                        <button type="button" onclick="closeModal()">Annuler</button>
+                        <button type="submit" class="primary">Enregistrer</button>
+                    </div>
+                </div>
             </form>
         </div>
     </div>
@@ -159,6 +164,7 @@
             editingRadionuclideId = null;
             document.getElementById('radionuclideModalTitle').textContent = 'Ajouter un radionucléide';
             document.getElementById('radionuclideForm').reset();
+            document.getElementById('rnDeleteBtn').style.display = 'none';
             document.getElementById('radionuclideModal').classList.add('open');
         }
 
@@ -175,6 +181,7 @@
             document.getElementById('date_reference').value = r.date_reference || '';
             document.getElementById('periode').value = r.periode ?? '';
             document.getElementById('lien_laraweb').value = r.lien_laraweb || '';
+            document.getElementById('rnDeleteBtn').style.display = '';
             document.getElementById('radionuclideModal').classList.add('open');
         }
 

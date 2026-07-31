@@ -87,6 +87,7 @@ async def update_consumption(
         "masse_avant": existante.masse_avant,
         "masse_apres": existante.masse_apres,
         "commentaire": existante.commentaire,
+        "timestamp": existante.timestamp,
     }
 
     donnees = updates.model_dump(exclude_unset=True)
@@ -126,3 +127,45 @@ async def update_consumption(
         ))
 
     return db_consumption
+
+@router.delete("/{consumption_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_consumption(
+    consumption_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_write_access),
+):
+    """Supprime une consommation/pesée -- demandé le 31/07/2026, pour
+    corriger un doublon (ex: le même document importé deux fois par
+    erreur). Contrairement aux sources (jamais supprimables, voir
+    ailleurs dans le code -- une source reste un objet physique qui doit
+    toujours rester traçable, même détruite), une consommation en
+    doublon ne correspond à AUCUN événement réel : rien à archiver, la
+    supprimer ne perd aucune trace d'un fait qui ne s'est jamais produit.
+    La suppression elle-même reste tracée dans l'audit, qui survit à la
+    consommation supprimée."""
+    repo = ConsumptionRepository(db)
+    existante = repo.get_by_id(consumption_id)
+    if not existante:
+        raise HTTPException(status_code=404, detail="Consommation non trouvée")
+
+    source = SourceRepository(db).get_by_id(existante.source_id)
+    if source:
+        check_source_mn_access(source, current_user)
+
+    resume_avant_suppression = (
+        f"date={existante.timestamp}, quantite_utilisee={existante.quantite_utilisee}, "
+        f"masse_avant={existante.masse_avant}, masse_apres={existante.masse_apres}"
+    )
+
+    repo.delete(consumption_id)
+
+    AuditRepository(db).create(AuditLogCreate(
+        utilisateur=current_user.username,
+        action="DELETE",
+        table_modifiee="consumptions",
+        id_source=existante.source_id,
+        champ_modifie=f"consommation#{consumption_id}",
+        valeur_avant=resume_avant_suppression,
+        valeur_apres=None,
+    ))
+    return

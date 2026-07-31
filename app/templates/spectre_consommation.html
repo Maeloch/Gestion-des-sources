@@ -33,7 +33,10 @@
 
     {% if resultat %}
         {% if resultat.spectre %}
-        <h3>Spectre au {{ date_reference | date_fr }}</h3>
+        <div class="actions-row" style="justify-content:space-between; align-items:center;">
+            <h3 style="margin:0;">Spectre au {{ date_reference | date_fr }}</h3>
+            <a href="/consumptions/spectre/export.xlsx?date_debut={{ date_debut.isoformat() }}&date_fin={{ date_fin.isoformat() }}&date_reference={{ date_reference.isoformat() }}"><button type="button">Exporter (Excel)</button></a>
+        </div>
         <div class="card">
             <table>
                 <thead><tr><th>Radionucléide</th><th>Activité</th><th>Part du total</th><th></th></tr></thead>

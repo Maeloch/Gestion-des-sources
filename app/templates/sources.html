@@ -334,7 +334,10 @@
 
                 <p class="hint">La quantité restante n'est plus saisie ici : elle se calcule automatiquement à partir de l'activité du radionucléide (bouton "+ Ajouter un radionucléide") et des consommations enregistrées.</p>
 
-                <button type="submit" class="primary">Enregistrer</button>
+                <div class="actions-row" style="justify-content:flex-end; margin-top:1rem;">
+                    <button type="button" onclick="closeModal()">Annuler</button>
+                    <button type="submit" class="primary">Enregistrer</button>
+                </div>
             </form>
             {% endif %}
         </div>

@@ -37,3 +37,11 @@ class ConsumptionRepository:
         self.db.commit()
         self.db.refresh(db_consumption)
         return db_consumption
+
+    def delete(self, consumption_id: int) -> bool:
+        db_consumption = self.get_by_id(consumption_id)
+        if not db_consumption:
+            return False
+        self.db.delete(db_consumption)
+        self.db.commit()
+        return True

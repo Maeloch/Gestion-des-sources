@@ -3044,3 +3044,84 @@ seulement la première comme avant cette généralisation.
 `app/main.py` (route `/consumptions/spectre`, `formater_activite_bq`
 enregistrée comme fonction Jinja globale), `app/templates/consumptions.html`
 (lien vers le nouvel outil), `README.md`.
+
+---
+
+## 42. V0.1.35 (31/07/2026) : modifier/supprimer une consommation, harmonisation, doublons, spectre
+
+### Contexte du signalement
+
+Retour direct après un premier essai réel de l'import historique : le
+même document importé deux fois par erreur a dupliqué tous les
+prélèvements, et une ligne portait la mauvaise année -- sans moyen de
+corriger après coup, seule la valeur d'une consommation pouvait être
+modifiée, pas sa date, et rien ne pouvait être supprimé.
+
+### Modifier et supprimer une consommation
+
+Date ajoutée à la correction (`ConsumptionUpdate.timestamp`, déjà géré
+génériquement par le repository -- aucune logique supplémentaire
+nécessaire). Nouvelle route `DELETE /consumptions/{id}` : contrairement
+aux sources (jamais supprimables, un objet physique reste toujours
+traçable même détruit), une consommation en doublon ne correspond à
+AUCUN événement réel -- rien à archiver, la supprimer ne perd aucune
+trace d'un fait qui ne s'est jamais produit. La suppression elle-même
+reste tracée dans l'audit.
+
+Un vrai bug trouvé en testant avec un moteur DOM plutôt qu'en relisant
+le code : le champ date du formulaire de correction restait vide, le
+JSON envoyé au frontend n'incluait jamais `timestamp`.
+
+### Harmonisation (question posée en retour : "à réfléchir et harmoniser")
+
+Le même patron (Annuler / Enregistrer / Supprimer, en bas de la pop-up)
+étendu à Radionucléides et Lieux -- Supprimer, qui vivait jusqu'ici sur
+la ligne du tableau, déplacé dans la pop-up de modification, visible
+seulement en édition (pas en création). Sources garde Annuler/Enregistrer
+SANS Supprimer, choix déjà établi et volontairement pas remis en
+question ici.
+
+### Détection de doublons à l'import historique
+
+Avant chaque création, vérifie si une consommation existe déjà pour la
+même source à la même date (déjà en base, ou déjà rencontrée plus tôt
+dans le même fichier) -- signalé clairement dans le rapport, jamais
+bloquant (reste un import "idiot", deux prélèvements réels le même jour
+restant possibles). Vérifié en rejouant exactement le scénario signalé
+(même fichier importé deux fois) : les deux lignes correctement
+signalées comme doublons potentiels.
+
+### Spectre : message technique retiré, export ajouté
+
+Le message d'avertissement référençant le nom d'une fonction Python
+interne ("voir activites_par_radionuclide_bq") retiré, remplacé par une
+explication compréhensible. Export Excel du spectre ajouté (deux
+feuilles), avec exactement les mêmes paramètres de date que la page.
+Logique commune aux deux routes (page + export) extraite dans une
+fonction partagée plutôt que dupliquée.
+
+### Testé
+
+247 tests automatisés (23 nouveaux). Plusieurs bugs trouvés dans mes
+propres tests en les écrivant (données de test manquantes, fixtures mal
+utilisées) -- corrigés en retrouvant la cause exacte plutôt qu'en
+contournant l'assertion.
+
+### Fichiers ajoutés
+
+`tests/test_harmonisation_boutons.py`.
+
+### Fichiers modifiés
+
+`app/models/consumption.py` (champ `timestamp` sur `ConsumptionUpdate`),
+`app/routes/consumptions.py` (route DELETE, `timestamp` dans l'audit),
+`app/repositories/consumption.py` (méthode `delete`),
+`app/templates/{consumptions,radionuclides,locations,sources}.html`
+(boutons harmonisés), `app/services/import_consommations_historiques.py`
+(détection de doublons), `app/scripts/import_consommations_historiques.py`
+(affichage des doublons), `app/services/spectre_consommation.py` (message
+corrigé, export Excel), `app/main.py` (route d'export, logique partagée),
+`app/templates/spectre_consommation.html` (bouton d'export),
+`tests/test_consumption_movement.py`,
+`tests/test_import_consommations_historiques.py`,
+`tests/test_spectre_consommation.py`, `README.md`.

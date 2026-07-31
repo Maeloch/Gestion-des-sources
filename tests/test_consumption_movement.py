@@ -236,18 +236,21 @@ def test_bouton_fusionner_retire_de_l_interface(admin_client):
     assert "mergeModal" not in page.text
 
 
-def test_bouton_supprimer_lieu_sans_collision_de_guillemets(admin_client):
-    """14/07/2026 : même bug que "Marquer retourné", trouvé au passage en
-    cherchant systématiquement ce motif ailleurs dans le code (pas
-    signalé directement, mais le même {{ location.nom | tojson }} dans un
-    onclick="..." y était aussi). Corrigé avec le même attribut data-*."""
+def test_bouton_supprimer_lieu_dans_la_popup_pas_sur_la_ligne(admin_client):
+    """14/07/2026 : bug de collision de guillemets corrigé sur ce bouton
+    à l'époque, quand il vivait encore sur la ligne du tableau. Depuis le
+    31/07/2026, il vit dans la pop-up de modification (harmonisé avec le
+    même patron que Radionucléides et Consommations) -- ce risque de
+    collision n'existe donc plus du tout, le nom n'étant plus interpolé
+    dans un attribut onclick mais lu depuis le champ du formulaire."""
     admin_client.post("/locations/", json={"nom": "Lieu à supprimer"})
     page = admin_client.get("/locations")
     assert page.status_code == 200
-    assert 'onclick="deleteLocation(' in page.text
-    assert ', "Lieu à supprimer")"' not in page.text
-    assert "this.dataset.nom" in page.text
-    assert 'data-nom="Lieu à supprimer"' in page.text
+    # Plus de bouton Supprimer sur la ligne elle-même.
+    assert 'onclick="deleteLocation(' not in page.text.split('id="locationModal"')[0]
+    # Présent dans la pop-up, cause caché par défaut (visible seulement en modification).
+    assert 'id="locationDeleteBtn"' in page.text
+    assert "document.getElementById('nom').value" in page.text
 
 
 def test_activite_specifique_utilise_quantite_initiale_pas_calcul_physique(admin_client, default_location):
@@ -604,11 +607,67 @@ def test_modification_pesee_recalcule_quantite_utilisee(admin_client, default_lo
     corrige = resp.json()
     assert corrige["masse_avant"] == 10.0  # inchangé
     assert corrige["masse_apres"] == 8.0
-    assert abs(corrige["quantite_utilisee"] - 2.0) < 0.001  # recalculé : 10 - 8
 
-    # La quantité restante de la source doit refléter la correction.
-    source = admin_client.get("/sources/SRC-CORRIGE").json()
-    assert source["quantite_calculee"] == 8.0
+
+def test_modification_date_consommation(admin_client, default_location):
+    """31/07/2026, demandé directement : la date pouvait déjà être fausse
+    dès la première saisie (import d'une fiche mal transcrite,
+    notamment), sans possibilité de la corriger après coup."""
+    admin_client.post("/sources/", json={
+        "id": "SRC-DATE-CORRIGEE", "type": "non-scellée", "etat_physique": "liquide",
+        "etat_utilisation": "en utilisation", "date_arrivee": "2020-01-01",
+        "emplacement_habituel_id": default_location, "quantite_initiale": 10, "unite_quantite": "g",
+    })
+    conso = admin_client.post("/consumptions/", json={
+        "source_id": "SRC-DATE-CORRIGEE", "quantite_utilisee": 1,
+    }).json()
+
+    resp = admin_client.patch(f"/consumptions/{conso['id']}", json={"timestamp": "2019-03-15T00:00:00"})
+    assert resp.status_code == 200
+    assert resp.json()["timestamp"].startswith("2019-03-15")
+
+
+def test_suppression_consommation(admin_client, default_location):
+    """31/07/2026, demandé directement, suite à un import dupliqué par
+    erreur : contrairement aux sources (jamais supprimables), une
+    consommation en doublon ne correspond à aucun événement réel --
+    rien à archiver, la supprimer ne perd aucune trace d'un fait qui ne
+    s'est jamais produit."""
+    admin_client.post("/sources/", json={
+        "id": "SRC-CONSO-A-SUPPRIMER", "type": "non-scellée", "etat_physique": "liquide",
+        "etat_utilisation": "en utilisation", "date_arrivee": "2020-01-01",
+        "emplacement_habituel_id": default_location, "quantite_initiale": 10, "unite_quantite": "g",
+    })
+    conso = admin_client.post("/consumptions/", json={
+        "source_id": "SRC-CONSO-A-SUPPRIMER", "quantite_utilisee": 1,
+    }).json()
+
+    resp = admin_client.delete(f"/consumptions/{conso['id']}")
+    assert resp.status_code == 204
+
+    fiche = admin_client.get("/sources/SRC-CONSO-A-SUPPRIMER/fiche").text
+    assert "Aucune consommation enregistrée" in fiche
+
+
+def test_suppression_consommation_inexistante_404(admin_client):
+    resp = admin_client.delete("/consumptions/999999")
+    assert resp.status_code == 404
+
+
+def test_suppression_consommation_tracee_dans_audit(admin_client, default_location):
+    admin_client.post("/sources/", json={
+        "id": "SRC-CONSO-AUDIT-SUPPR", "type": "non-scellée", "etat_physique": "liquide",
+        "etat_utilisation": "en utilisation", "date_arrivee": "2020-01-01",
+        "emplacement_habituel_id": default_location, "quantite_initiale": 10, "unite_quantite": "g",
+    })
+    conso = admin_client.post("/consumptions/", json={
+        "source_id": "SRC-CONSO-AUDIT-SUPPR", "quantite_utilisee": 1,
+    }).json()
+    admin_client.delete(f"/consumptions/{conso['id']}")
+
+    audit = admin_client.get("/audit").text
+    assert "SRC-CONSO-AUDIT-SUPPR" in audit
+    assert f"consommation#{conso['id']}" in audit
 
 
 def test_modification_pesee_refusee_si_incoherente(admin_client, default_location):

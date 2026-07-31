@@ -39,6 +39,10 @@ def main() -> None:
         db.close()
 
     print(f"\n{rapport['consommations_creees']} consommation(s) créée(s).")
+    if rapport["doublons_potentiels"]:
+        print(f"\n⚠ {len(rapport['doublons_potentiels'])} doublon(s) potentiel(s) détecté(s) (même source, même date qu'une consommation déjà connue) -- à vérifier, corriger depuis la page Consommations si besoin :")
+        for d in rapport["doublons_potentiels"]:
+            print(f"  Ligne {d['ligne']} : source '{d['source_id']}' à la date du {d['date'].strftime('%d/%m/%Y')}")
     if rapport["lignes_ignorees"]:
         print(f"\n{len(rapport['lignes_ignorees'])} ligne(s) ignorée(s) :")
         for l in rapport["lignes_ignorees"]:

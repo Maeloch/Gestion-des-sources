@@ -204,3 +204,80 @@ def test_page_spectre_affiche_erreur_si_date_reference_invalide(admin_client, de
 def test_page_spectre_lien_present_depuis_consumptions(admin_client):
     page = admin_client.get("/consumptions")
     assert 'href="/consumptions/spectre"' in page.text
+
+
+def test_export_spectre_xlsx_contenu_correct(admin_client, default_location):
+    admin_client.post("/sources/", json={
+        "id": "SRC-EXPORT-SPECTRE-TEST", "type": "non-scellée", "etat_physique": "liquide",
+        "etat_utilisation": "en utilisation", "date_arrivee": "2020-01-01",
+        "emplacement_habituel_id": default_location, "quantite_initiale": 100, "unite_quantite": "g",
+    })
+    admin_client.post("/radionuclides/", json={
+        "source_id": "SRC-EXPORT-SPECTRE-TEST", "nom": "Co-60", "activite": 10,
+        "unite_activite": "Bq/g", "date_reference": str(date.today()), "periode": 5.27,
+        "activite_est_specifique": True,
+    })
+    admin_client.post("/consumptions/", json={"source_id": "SRC-EXPORT-SPECTRE-TEST", "quantite_utilisee": 4})
+
+    debut = (date.today() - timedelta(days=1)).isoformat()
+    fin = date.today().isoformat()
+    resp = admin_client.get(f"/consumptions/spectre/export.xlsx?date_debut={debut}&date_fin={fin}&date_reference={fin}")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    import io, openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    assert wb.sheetnames == ["Spectre", "Consommations incluses"]
+    lignes_spectre = list(wb["Spectre"].iter_rows(values_only=True))
+    assert lignes_spectre[2] == ("Radionucléide", "Activité (Bq)", "Part du total (%)")
+    assert lignes_spectre[3][0] == "Co-60"
+    lignes_conso = list(wb["Consommations incluses"].iter_rows(values_only=True))
+    assert lignes_conso[1][1] == "SRC-EXPORT-SPECTRE-TEST"
+
+
+def test_export_spectre_refuse_si_date_reference_invalide(admin_client):
+    resp = admin_client.get("/consumptions/spectre/export.xlsx?date_debut=2026-07-01&date_fin=2026-07-31&date_reference=2026-07-15")
+    assert resp.status_code == 400
+
+
+def test_bouton_export_present_sur_la_page(admin_client, default_location):
+    admin_client.post("/sources/", json={
+        "id": "SRC-BOUTON-EXPORT", "type": "non-scellée", "etat_physique": "liquide",
+        "etat_utilisation": "en utilisation", "date_arrivee": "2020-01-01",
+        "emplacement_habituel_id": default_location, "quantite_initiale": 100, "unite_quantite": "g",
+    })
+    admin_client.post("/radionuclides/", json={
+        "source_id": "SRC-BOUTON-EXPORT", "nom": "Co-60", "activite": 10,
+        "unite_activite": "Bq/g", "date_reference": str(date.today()), "periode": 5.27,
+        "activite_est_specifique": True,
+    })
+    admin_client.post("/consumptions/", json={"source_id": "SRC-BOUTON-EXPORT", "quantite_utilisee": 4})
+
+    debut = (date.today() - timedelta(days=1)).isoformat()
+    fin = date.today().isoformat()
+    page = admin_client.get(f"/consumptions/spectre?date_debut={debut}&date_fin={fin}&date_reference={fin}")
+    assert "/consumptions/spectre/export.xlsx?" in page.text
+
+
+def test_message_ignore_ne_reference_plus_de_fonction_python(admin_client, default_location):
+    """31/07/2026, signalé directement : le message affiché à l'utilisateur
+    ne doit jamais nommer une fonction Python interne."""
+    admin_client.post("/sources/", json={
+        "id": "SRC-SANS-PERIODE-MSG", "type": "non-scellée", "etat_physique": "liquide",
+        "etat_utilisation": "en utilisation", "date_arrivee": "2020-01-01",
+        "emplacement_habituel_id": default_location, "quantite_initiale": 100, "unite_quantite": "g",
+    })
+    admin_client.post("/radionuclides/", json={
+        "source_id": "SRC-SANS-PERIODE-MSG", "nom": "RN-Test", "activite": 10,
+        "unite_activite": "Bq/g", "date_reference": str(date.today()), "periode": None,
+        "activite_est_specifique": True,
+    })
+    admin_client.post("/consumptions/", json={"source_id": "SRC-SANS-PERIODE-MSG", "quantite_utilisee": 4})
+
+    debut = (date.today() - timedelta(days=1)).isoformat()
+    fin = date.today().isoformat()
+    page = admin_client.get(f"/consumptions/spectre?date_debut={debut}&date_fin={fin}&date_reference={fin}")
+
+    assert "activites_par_radionuclide_bq" not in page.text
+    assert "aucune activité calculable" in page.text

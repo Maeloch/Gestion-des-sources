@@ -80,7 +80,7 @@ def calculer_spectre_consommation(db, date_debut: date, date_fin: date, date_ref
                 radionuclides_sans_periode.add(rn.nom)
 
         if not activites_de_cette_conso:
-            consommations_ignorees.append({"id": c.id, "source_id": c.source_id, "raison": "aucune activité calculable pour cette source (voir activites_par_radionuclide_bq)"})
+            consommations_ignorees.append({"id": c.id, "source_id": c.source_id, "raison": "aucune activité calculable pour cette source (période radioactive ou concentration manquante)"})
             continue
 
         for nom_rn, activite_a_la_conso in activites_de_cette_conso.items():
@@ -117,3 +117,41 @@ def calculer_spectre_consommation(db, date_debut: date, date_fin: date, date_ref
         "consommations_ignorees": consommations_ignorees,
         "radionuclides_sans_periode": sorted(radionuclides_sans_periode),
     }
+
+
+def exporter_spectre_excel(resultat: dict, output_path: str) -> None:
+    """Exporte un spectre déjà calculé (voir calculer_spectre_consommation)
+    vers un fichier Excel à deux feuilles -- demandé le 31/07/2026.
+    Prend le résultat déjà calculé plutôt que de recalculer, pour que
+    l'export reflète exactement ce qui a été affiché à l'écran."""
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+
+    sheet_spectre = wb.active
+    sheet_spectre.title = "Spectre"
+    sheet_spectre.append([
+        f"Spectre-type du {resultat['date_debut'].strftime('%d/%m/%Y')} "
+        f"au {resultat['date_fin'].strftime('%d/%m/%Y')}, "
+        f"à la date du {resultat['date_reference'].strftime('%d/%m/%Y')}"
+    ])
+    sheet_spectre.append([])
+    sheet_spectre.append(["Radionucléide", "Activité (Bq)", "Part du total (%)"])
+    for entree in resultat["spectre"]:
+        sheet_spectre.append([entree["nom"], entree["activite_bq"], round(entree["pourcentage"], 2)])
+    sheet_spectre.append([])
+    sheet_spectre.append(["Total", resultat["total_bq"], 100.0 if resultat["spectre"] else 0.0])
+    for col_lettre, largeur in zip("ABC", (18, 16, 16)):
+        sheet_spectre.column_dimensions[col_lettre].width = largeur
+
+    sheet_conso = wb.create_sheet("Consommations incluses")
+    sheet_conso.append(["Date", "Source", "Radionucléide", "Activité à la consommation (Bq)"])
+    for c in resultat["consommations"]:
+        sheet_conso.append([
+            c["date"].strftime("%d/%m/%Y"), c["source_id"], c["radionuclide"],
+            c["activite_a_la_consommation_bq"],
+        ])
+    for col_lettre, largeur in zip("ABCD", (14, 16, 16, 26)):
+        sheet_conso.column_dimensions[col_lettre].width = largeur
+
+    wb.save(output_path)

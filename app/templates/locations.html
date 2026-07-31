@@ -38,7 +38,6 @@
                 {% if current_user and current_user.role.value != "lecteur" %}
                 <td class="actions-cell">
                     <button onclick="openEditModal({{ location.id }})">Modifier</button>
-                    <button data-nom="{{ location.nom }}" onclick="deleteLocation({{ location.id }}, this.dataset.nom)">Supprimer</button>
                 </td>
                 {% endif %}
             </tr>
@@ -74,7 +73,13 @@
                 <label for="description">Description (facultatif) :</label>
                 <input type="text" id="description">
 
-                <button type="submit" class="primary">Enregistrer</button>
+                <div class="actions-row" style="justify-content:space-between; margin-top:1rem;">
+                    <button type="button" class="danger" id="locationDeleteBtn" style="display:none;" onclick="deleteLocation(editingLocationId, document.getElementById('nom').value)">Supprimer</button>
+                    <div class="actions-row" style="margin:0;">
+                        <button type="button" onclick="closeModal()">Annuler</button>
+                        <button type="submit" class="primary">Enregistrer</button>
+                    </div>
+                </div>
             </form>
         </div>
     </div>
@@ -98,6 +103,7 @@
             editingLocationId = null;
             document.getElementById('locationModalTitle').textContent = 'Ajouter un lieu';
             document.getElementById('locationForm').reset();
+            document.getElementById('locationDeleteBtn').style.display = 'none';
             document.getElementById('locationModal').classList.add('open');
         }
 
@@ -106,6 +112,7 @@
             if (!l) return;
             editingLocationId = locationId;
             document.getElementById('locationModalTitle').textContent = `Modifier le lieu "${l.nom}"`;
+            document.getElementById('locationDeleteBtn').style.display = '';
             document.getElementById('nom').value = l.nom || '';
             document.getElementById('site').value = l.site || '';
             document.getElementById('batiment').value = l.batiment || '';

@@ -377,6 +377,7 @@ async def list_consumptions(request: Request, db: Session = Depends(get_db), cur
     # fonctionnalité, sur le même principe que le bug du 12/07/2026.
     consumptions_json = _json.dumps({
         c.id: {
+            "timestamp": c.timestamp.isoformat() if c.timestamp else None,
             "masse_avant": c.masse_avant,
             "masse_apres": c.masse_apres,
             "quantite_utilisee": c.quantite_utilisee,
@@ -398,30 +399,14 @@ async def list_consumptions(request: Request, db: Session = Depends(get_db), cur
         },
     )
 
-@app.get("/consumptions/spectre", response_class=HTMLResponse)
-async def spectre_consommation(
-    request: Request,
-    date_debut: str = None,
-    date_fin: str = None,
-    date_reference: str = None,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user_optional),
-):
-    """Spectre-type des radionucléides consommés sur une plage de temps
-    -- demandé le 30/07/2026, pour estimer la composition isotopique des
-    déchets (supposée proportionnelle à l'activité des sources mères
-    consommées). Voir app/services/spectre_consommation.py pour le
-    raisonnement complet et ses limites assumées."""
-    redirect = _redirect_to_login_if_needed(current_user)
-    if redirect:
-        return redirect
+def _calculer_spectre_depuis_params(db, current_user, date_debut: str, date_fin: str, date_reference: str):
+    """Logique commune à la page et à l'export du spectre -- extraite le
+    31/07/2026 pour ne pas la dupliquer entre les deux routes. Renvoie
+    (debut, fin, reference, resultat, erreur)."""
     from datetime import date as date_cls, timedelta
     from app.services.spectre_consommation import calculer_spectre_consommation
 
     aujourdhui = date_cls.today()
-    # Par défaut : le mois écoulé, jusqu'à aujourd'hui -- une plage
-    # immédiatement utile à l'arrivée sur la page plutôt qu'un formulaire
-    # vide, ajustable ensuite au besoin.
     debut = date_cls.fromisoformat(date_debut) if date_debut else aujourdhui - timedelta(days=30)
     fin = date_cls.fromisoformat(date_fin) if date_fin else aujourdhui
     reference = date_cls.fromisoformat(date_reference) if date_reference else aujourdhui
@@ -443,6 +428,28 @@ async def spectre_consommation(
             from app.repositories.source import SourceRepository
             mn_ids = {s.id for s in SourceRepository(db).get_all() if s.matiere_nucleaire}
             resultat["consommations"] = [c for c in resultat["consommations"] if c["source_id"] not in mn_ids]
+    return debut, fin, reference, resultat, erreur
+
+@app.get("/consumptions/spectre", response_class=HTMLResponse)
+async def spectre_consommation(
+    request: Request,
+    date_debut: str = None,
+    date_fin: str = None,
+    date_reference: str = None,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user_optional),
+):
+    """Spectre-type des radionucléides consommés sur une plage de temps
+    -- demandé le 30/07/2026, pour estimer la composition isotopique des
+    déchets (supposée proportionnelle à l'activité des sources mères
+    consommées). Voir app/services/spectre_consommation.py pour le
+    raisonnement complet et ses limites assumées."""
+    redirect = _redirect_to_login_if_needed(current_user)
+    if redirect:
+        return redirect
+    debut, fin, reference, resultat, erreur = _calculer_spectre_depuis_params(
+        db, current_user, date_debut, date_fin, date_reference
+    )
 
     return templates.TemplateResponse(
         request=request,
@@ -456,6 +463,38 @@ async def spectre_consommation(
             "erreur": erreur,
             "current_user": current_user,
         },
+    )
+
+@app.get("/consumptions/spectre/export.xlsx")
+async def export_spectre_consommation(
+    date_debut: str = None,
+    date_fin: str = None,
+    date_reference: str = None,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user_optional),
+):
+    """Export Excel du spectre -- demandé le 31/07/2026, avec exactement
+    les mêmes paramètres (et donc le même résultat) que la page."""
+    redirect = _redirect_to_login_if_needed(current_user)
+    if redirect:
+        return redirect
+    debut, fin, reference, resultat, erreur = _calculer_spectre_depuis_params(
+        db, current_user, date_debut, date_fin, date_reference
+    )
+    if erreur:
+        raise HTTPException(status_code=400, detail=erreur)
+
+    import tempfile
+    from app.services.spectre_consommation import exporter_spectre_excel
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+        tmp_path = tmp.name
+    exporter_spectre_excel(resultat, tmp_path)
+
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        tmp_path,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=f"spectre_{debut.isoformat()}_{fin.isoformat()}.xlsx",
     )
 
 @app.get("/audit", response_class=HTMLResponse)

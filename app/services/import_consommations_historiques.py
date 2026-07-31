@@ -71,8 +71,20 @@ def importer_consommations_historiques(fichier_path: str, db, utilisateur_par_de
     créées, et le détail de chaque ligne ignorée avec sa raison -- la
     seule "vérification" faite ici, le contrôle de fond ayant déjà eu
     lieu lors de la relecture de la transcription (voir le docstring du
-    module)."""
-    rapport = {"consommations_creees": 0, "lignes_ignorees": []}
+    module).
+
+    Détection de doublons potentiels ajoutée le 31/07/2026, suite à un
+    cas réel (le même document importé deux fois par erreur, dupliquant
+    tous les prélèvements) : avant chaque création, vérifie si une
+    consommation existe déjà pour la MÊME source à la MÊME date (déjà en
+    base, ou déjà créée plus tôt dans ce même import) -- signalé dans le
+    rapport, mais n'empêche jamais la création (ça reste un import
+    "idiot" : deux prélèvements réels le même jour sur la même source
+    sont possibles, ce n'est pas forcément une erreur). Rien de plus
+    simple ensuite que de supprimer le doublon depuis la page
+    Consommations si le signalement s'avère justifié.
+    """
+    rapport = {"consommations_creees": 0, "lignes_ignorees": [], "doublons_potentiels": []}
 
     wb = openpyxl.load_workbook(fichier_path, data_only=True)
     ws = wb.active
@@ -85,6 +97,15 @@ def importer_consommations_historiques(fichier_path: str, db, utilisateur_par_de
             return None
         v = row[idx].value if hasattr(row[idx], "value") else row[idx]
         return v if v not in (None, "") else None
+
+    # (source_id, date) déjà rencontrés -- en base AVANT cet import, et
+    # au fil de celui-ci (deux lignes du même fichier peuvent aussi se
+    # dupliquer entre elles, pas seulement par rapport à l'existant).
+    dates_existantes = {
+        (c.source_id, c.timestamp.date())
+        for c in db.query(ConsumptionDB).all()
+        if c.timestamp is not None
+    }
 
     for num_ligne, row in enumerate(ws.iter_rows(min_row=2), start=2):
         source_id = val(row, "ID Source")
@@ -116,6 +137,13 @@ def importer_consommations_historiques(fichier_path: str, db, utilisateur_par_de
                  "raison": "ni masse avant ni quantité utilisée renseignées"}
             )
             continue
+
+        cle = (source_id, date_evenement.date())
+        if cle in dates_existantes:
+            rapport["doublons_potentiels"].append({
+                "ligne": num_ligne, "source_id": source_id, "date": date_evenement.date(),
+            })
+        dates_existantes.add(cle)
 
         if masse_avant is not None:
             # Pesée de contrôle si "masse après" absente -- même

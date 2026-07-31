@@ -1,6 +1,6 @@
 # Gestion des Sources Radioactives
 
-**Version 0.1.34** — affichée en bas de la barre latérale de l'application. En cas
+**Version 0.1.35** — affichée en bas de la barre latérale de l'application. En cas
 de doute sur la version que tu es en train de tester (par exemple si tu as
 plusieurs dossiers de versions différentes sur ta machine), regarde le pied
 de page : le numéro doit correspondre à celui annoncé dans le message de
@@ -657,6 +657,33 @@ mélange de calibration homogène, à garder en tête sinon). Toute
 consommation ignorée (source sans radionucléide exploitable) ou tout
 radionucléide sans période radioactive connue (donc sans décroissance
 calculable) est signalé, jamais silencieux.
+
+Bouton **"Exporter (Excel)"** (31/07/2026) : télécharge exactement le
+spectre affiché à l'écran (mêmes dates), sur deux feuilles -- le spectre
+lui-même, et le détail des consommations qui le composent.
+
+## 8quater. Modifier et supprimer (31/07/2026)
+
+Les pop-ups de modification (Consommations, Radionucléides, Lieux)
+suivent maintenant le même patron : **Annuler**, **Enregistrer**, et
+pour Consommations/Radionucléides/Lieux, **Supprimer** (avec
+confirmation), tous en bas de la pop-up plutôt qu'éparpillés. Sources
+garde volontairement Annuler/Enregistrer sans Supprimer — une source
+reste un objet physique qui doit toujours pouvoir être tracé, même
+détruite (archivage, pas suppression, voir plus haut).
+
+Sur **Consommations** spécifiquement : la date d'une consommation est
+désormais modifiable (elle ne l'était pas jusqu'ici, seule la valeur
+l'était), et une consommation peut être supprimée -- utile en particulier
+pour corriger un import historique dupliqué par erreur. Contrairement à
+une source, une consommation en doublon ne correspond à aucun événement
+réel : la supprimer ne perd aucune trace d'un fait qui ne s'est jamais
+produit. La suppression reste tracée dans l'audit.
+
+L'import de consommations historiques (voir section 4bis) détecte
+maintenant les doublons potentiels (même source, même date qu'une
+consommation déjà connue, en base ou dans le même fichier) -- signalé
+clairement dans le rapport, sans jamais bloquer l'import.
 
 ## 9. Import / Export (réservé aux administrateurs)
 

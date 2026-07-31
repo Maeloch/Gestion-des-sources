@@ -195,6 +195,9 @@
             <h3>Corriger une consommation</h3>
             <p class="hint">Pour corriger une erreur de saisie. Chaque modification reste tracée dans l'audit.</p>
             <form id="editConsumptionForm">
+                <label for="edit_timestamp">Date :</label>
+                <input type="date" id="edit_timestamp">
+
                 <label for="edit_masse_avant">Masse avant :</label>
                 <input type="number" step="any" id="edit_masse_avant">
 
@@ -207,7 +210,13 @@
                 <label for="edit_commentaire">Commentaire :</label>
                 <input type="text" id="edit_commentaire">
 
-                <button type="submit" class="primary">Enregistrer la correction</button>
+                <div class="actions-row" style="justify-content:space-between; margin-top:1rem;">
+                    <button type="button" class="danger" onclick="supprimerConsumption()">Supprimer</button>
+                    <div class="actions-row" style="margin:0;">
+                        <button type="button" onclick="closeEditModal()">Annuler</button>
+                        <button type="submit" class="primary">Enregistrer</button>
+                    </div>
+                </div>
             </form>
         </div>
     </div>
@@ -244,6 +253,10 @@
         function openEditModal(id) {
             editingConsumptionId = id;
             const c = consumptionsData[id] || {};
+            // c.timestamp est une chaîne ISO complète (ex: "2026-07-31T14:35:00") --
+            // un <input type="date"> n'accepte que la partie JJ/MM/AAAA (AAAA-MM-JJ
+            // pour lui), d'où cette troncature à 10 caractères.
+            document.getElementById('edit_timestamp').value = c.timestamp ? c.timestamp.slice(0, 10) : '';
             document.getElementById('edit_masse_avant').value = c.masse_avant ?? '';
             document.getElementById('edit_masse_apres').value = c.masse_apres ?? '';
             document.getElementById('edit_quantite_utilisee').value = (c.masse_avant == null && c.masse_apres == null) ? (c.quantite_utilisee ?? '') : '';
@@ -254,12 +267,31 @@
             document.getElementById('editConsumptionModal').classList.remove('open');
         }
 
+        async function supprimerConsumption() {
+            const c = consumptionsData[editingConsumptionId] || {};
+            const dateAffichee = c.timestamp ? c.timestamp.slice(0, 10).split('-').reverse().join('/') : '';
+            if (!confirm(`Supprimer définitivement cette consommation du ${dateAffichee} ? Cette action est irréversible (mais reste tracée dans l'audit).`)) {
+                return;
+            }
+            const response = await fetch(`/consumptions/${editingConsumptionId}`, { method: 'DELETE' });
+            if (response.ok) {
+                window.location.reload();
+            } else if (response.status === 401) {
+                window.location.href = '/auth/login';
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        }
+
         document.getElementById('editConsumptionForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const payload = {};
+            const timestampVal = document.getElementById('edit_timestamp').value;
             const masseAvantVal = document.getElementById('edit_masse_avant').value;
             const masseApresVal = document.getElementById('edit_masse_apres').value;
             const quantiteVal = document.getElementById('edit_quantite_utilisee').value;
+            if (timestampVal !== '') payload.timestamp = timestampVal;
             if (masseAvantVal !== '') payload.masse_avant = parseFloat(masseAvantVal);
             if (masseApresVal !== '') payload.masse_apres = parseFloat(masseApresVal);
             if (quantiteVal !== '') payload.quantite_utilisee = parseFloat(quantiteVal);
