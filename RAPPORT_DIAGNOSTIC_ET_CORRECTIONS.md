@@ -3166,3 +3166,297 @@ scénario du journal transmis.
 
 `app/templates/{consumptions,locations,radionuclides}.html` (`align-items`
 explicite sur les conteneurs de boutons), `README.md`.
+
+---
+
+## 44. V0.1.37 (31/07/2026) : vérification automatique de la version en ligne
+
+### Confirmation du diagnostic
+
+L'utilisateur confirme : la version affichée était bien la V0.1.34, pas
+la V0.1.36 -- exactement le même mécanisme que l'incident du 24/07/2026
+(cascade de rechargement Windows sur lecteur réseau), déjà documenté et
+déjà pourvu d'un avertissement textuel dans `appliquer_version.py`.
+Cet avertissement, seul, s'est montré insuffisant en pratique.
+
+### La vraie correction : vérifier plutôt qu'avertir
+
+Plutôt que reformuler l'avertissement une nouvelle fois, `appliquer_version.py`
+vérifie maintenant lui-même. Nouvel endpoint `GET /version` (sans
+authentification -- ce n'est qu'un numéro de version) ; le script
+interroge `http://127.0.0.1:8000/version` une fois la mise à jour
+appliquée et compare à la version qui vient d'être déployée, avec un
+avertissement impossible à manquer en cas d'écart. Ne bloque jamais si
+le serveur n'est pas joignable.
+
+Un vrai bug trouvé en écrivant les tests, pas en écrivant le code :
+lire la version attendue via `from app.version import APP_VERSION`
+tombait dans le cache d'import Python (`sys.modules`) dès que `app.version`
+avait déjà été importé ailleurs dans le même processus -- invisible en
+usage réel (le script tourne toujours dans un processus frais), mais
+révélé immédiatement par les tests (qui, eux, tournent tous dans le
+même processus pytest). Corrigé en lisant et parsant le fichier
+`version.py` directement plutôt qu'en l'important, ce qui élimine le
+risque plutôt que de le contourner.
+
+Vérifié avec un vrai serveur et un processus isolé, dans les trois cas :
+version qui correspond, version qui diverge (le scénario réel rejoué),
+serveur injoignable.
+
+### Boutons : hauteur harmonisée
+
+Signalé au passage : la largeur différente entre Annuler/Enregistrer/
+Supprimer est normale (texte de longueur différente), la hauteur ne
+l'était pas -- `align-items` explicite ajouté sur les conteneurs
+concernés.
+
+### Testé
+
+251 tests automatisés (5 nouveaux). Un des nouveaux tests a lui-même
+révélé le bug de cache d'import ci-dessus avant d'être corrigé.
+
+### Fichiers modifiés
+
+`app/main.py` (endpoint `/version`), `app/scripts/appliquer_version.py`
+(`verifier_version_en_ligne`, lecture directe du fichier plutôt
+qu'import), `tests/test_appliquer_version.py`, `README.md`.
+
+---
+
+## 45. V0.1.38 (31/07/2026) : la vraie cause du blocage de version, trouvée et corrigée
+
+### Le correctif précédent ne suffisait pas
+
+Confirmé par l'utilisateur : `--reload` désactivé, serveur arrêté avant
+chaque mise à jour, "current" vérifié à jour sur disque (git, contenu
+des fichiers) -- et pourtant, toujours V0.1.34 affichée après
+redémarrage complet. Un indice décisif dans son message : la hauteur
+des boutons (un changement de gabarit HTML) s'était bien mise à jour,
+mais pas le numéro de version (lu depuis un module Python). Ce
+déséquilibre pointait vers quelque chose de spécifique à l'exécution de
+code Python, pas vers les gabarits eux-mêmes.
+
+### Diagnostic : le cache bytecode Python, pas le rechargement
+
+Hypothèse posée, puis vérifiée empiriquement avant d'écrire une seule
+ligne de correctif (pas supposée) : quand un fichier `.py` remplacé se
+retrouve avec exactement le même (date de modification, taille en
+octets) que l'ancien -- possible sur un lecteur réseau, où la
+granularité d'horodatage est plus grossière qu'en local -- la
+vérification par défaut de Python considère à tort son cache compilé
+(`__pycache__`) toujours valide, et continue à exécuter silencieusement
+le bytecode de l'ANCIENNE version. Reproduit dans un premier temps de
+façon isolée (deux fichiers factices, mtime identique forcé), puis dans
+un test automatisé complet simulant tout le scénario réel.
+
+`__pycache__` n'est jamais copié depuis la nouvelle version (déjà
+exclu de la copie) -- les anciens dossiers, sur la cible, ne sont donc
+jamais remplacés par la copie elle-même. `appliquer_version.py` les
+supprime maintenant explicitement à chaque mise à jour, ce qui élimine
+le risque à la racine plutôt que de dépendre d'une comparaison
+d'horodatage démontrée non fiable dans ce contexte précis.
+
+### Testé
+
+254 tests automatisés (3 nouveaux, dont une reproduction complète du
+bug ET de son correctif dans le même test -- vérifié que le problème se
+produit bien sans le correctif, avant de vérifier qu'il disparaît avec,
+plutôt que de supposer que l'un implique l'autre).
+
+### Fichiers modifiés
+
+`app/scripts/appliquer_version.py` (fonction `nettoyer_cache_bytecode`,
+appelée après la copie), `tests/test_appliquer_version.py`, `README.md`.
+
+---
+
+## 46. V0.1.39 (31/07/2026) : trois bugs concrets, passe boutons complète, formulaire du spectre retravaillé
+
+### Trois bugs signalés directement
+
+**Masses sans unité sur la fiche source** : masse avant/après affichaient
+juste un nombre, sans "g" ou "mL" -- corrigé sur le même modèle que la
+page Consommations (qui l'affichait déjà).
+
+**"Modifier" depuis la fiche source renvoyait à la liste, pas au
+formulaire** : fallait recliquer "Modifier" une seconde fois. Ajouté un
+paramètre `?modifier=XXX`, même principe que `?source=XXX` sur
+Consommations/Mouvements. Un vrai bug d'introduction trouvé et corrigé
+en testant avec un moteur DOM : le code vivait dans le premier des deux
+blocs `<script>` de `sources.html`, avant que `openEditModal` (défini
+dans le second) n'existe encore -- déplacé au bon endroit.
+
+**Pop-up d'emprunt qui se rouvrait après validation** :
+`window.location.reload()` gardait `?source=XXX` dans l'URL (arrivée
+depuis le bouton "Emprunter" d'une source), ce qui redéclenchait
+l'ouverture automatique de cette même pop-up juste après le succès.
+Remplacé par une redirection vers une URL propre sur les trois
+soumissions de la page Mouvements.
+
+### Passe boutons complète
+
+Demandé directement : "une passe complète et totale de l'ensemble des
+boutons pour les aligner, les rendre homogènes." Audit systématique de
+TOUTES les pop-up de l'application (13, recensées une à une plutôt
+qu'au cas par cas) : bien plus d'incohérences que prévu -- les trois
+formulaires de Mouvements, les deux ajouts rapides sur Sources, le
+formulaire de l'archive des sources, la création de consommation, et
+les deux pop-up globales de `base.html` (mot de passe, demande de rôle)
+n'avaient AUCUN bouton "Annuler", juste un bouton d'action seul.
+
+Plutôt que de répéter un style en ligne sur chaque pop-up (source de la
+dérive initiale), nouvelle classe CSS dédiée (`.modal-actions`)
+centralisant le patron une bonne fois. Vérifié par comptage que chaque
+page a désormais une correspondance exacte entre son nombre de boutons
+`submit` et son nombre de boutons "Annuler", puis fonctionnellement
+avec un moteur DOM sur un échantillon (ouverture, fermeture par
+Annuler) plutôt que textuellement seulement.
+
+### Formulaire du spectre-type retravaillé
+
+Trois libellés de longueurs très inégales ("Du", "Au", "Spectre à la
+date du") cassaient l'alignement vertical entre les champs. Retravaillé :
+la plage de dates (Du/Au) groupée visuellement sous un même intitulé,
+séparée par un trait vertical de la date de référence (un concept
+différent -- à quelle date calculer la décroissance), plutôt que trois
+champs de poids visuel identique sans hiérarchie.
+
+### Testé
+
+263 tests automatisés (17 nouveaux). Plusieurs bugs trouvés dans mes
+propres tests en les écrivant (oublis de données préalables pour que
+certains formulaires se rendent, page globale non comptée) -- corrigés
+en retrouvant la cause exacte.
+
+### Fichiers modifiés
+
+`app/main.py` (unités sur les masses, fiche source), `app/templates/fiche_source.html`
+(unités, lien Modifier), `app/templates/sources.html` (`?modifier=`,
+placé dans le bon bloc script), `app/templates/movements.html`
+(redirection propre, Annuler sur les trois formulaires),
+`app/templates/{consumptions,locations,radionuclides,sources,sources_archive,base}.html`
+(classe `.modal-actions`, Annuler ajouté où manquant),
+`app/templates/spectre_consommation.html` (formulaire retravaillé),
+`app/static/style.css` (`.modal-actions`, `.spectre-form`),
+`tests/test_fiche_source.py`, `tests/test_consumption_movement.py`,
+`tests/test_harmonisation_boutons.py`, `tests/test_spectre_consommation.py`,
+`README.md`.
+
+---
+
+## 47. V0.1.40 (31/07/2026) : favicon
+
+### Le signalement
+
+`GET /favicon.ico` journalisé en 404 de façon récurrente par uvicorn --
+les navigateurs sondent systématiquement cette adresse à la racine du
+site, indépendamment de toute balise dans le `<head>` (qui n'existait
+d'ailleurs pas du tout jusqu'ici).
+
+### Réalisé
+
+Repris fidèlement le mark déjà utilisé dans la barre latérale (la même
+courbe et le même point, en teal `#4fb8b8`) plutôt qu'inventer un
+nouveau symbole, sur un fond reprenant le dégradé sombre de la barre
+latérale elle-même -- cohérence visuelle avec l'identité déjà en place.
+Vérifié visuellement à 16px et 32px (agrandi en préservant les pixels
+exacts pour juger fidèlement du rendu réel, pas d'un aperçu lissé) avant
+de valider le choix.
+
+Trois fichiers : `favicon.ico` (multi-résolution 16/32/48, pour la
+compatibilité la plus large), `favicon.svg` (net à toute taille sur les
+navigateurs récents), `apple-touch-icon.png` (180×180, favoris/écran
+d'accueil iOS). Balises `<link>` correspondantes ajoutées dans le
+`<head>` de `base.html`, avec le même paramètre de version anti-cache
+que les autres ressources statiques. Route dédiée `GET /favicon.ico` à
+la racine (en plus de `/static/favicon.ico`) : c'est spécifiquement
+cette adresse que les navigateurs sondent d'eux-mêmes, d'où le 404
+initial malgré la présence du fichier dans `/static/`.
+
+Vérifié qu'une requête HEAD sur cette nouvelle route renvoie 405 --
+mais confirmé qu'il s'agit d'un comportement déjà présent sur toutes
+les routes GET existantes de l'application (`/sources`, `/` compris),
+pas une régression propre à cette route ; hors sujet, non traité ici.
+
+### Testé
+
+267 tests automatisés (4 nouveaux). Vérifié avec un vrai serveur que
+`GET /favicon.ico` renvoie 200, exactement la requête journalisée dans
+le signalement initial.
+
+### Fichiers ajoutés
+
+`app/static/favicon.ico`, `app/static/favicon.svg`,
+`app/static/apple-touch-icon.png`, `tests/test_favicon.py`.
+
+### Fichiers modifiés
+
+`app/main.py` (route `/favicon.ico`), `app/templates/base.html`
+(balises `<link>`), `README.md`.
+
+---
+
+## 48. V0.1.41 (31/08/2026) : "fatal: detected dubious ownership" à la mise à jour
+
+### Le signalement
+
+Journal du script de mise à jour transmis avec un "fatal" : `git add`
+puis `git commit` échouaient silencieusement (ou presque -- le message
+imprimé pour ce cas, "rien à commiter ou dépôt non configuré", était
+trompeur, un troisième cas non anticipé) avec
+`fatal: detected dubious ownership in repository at
+'//stockagefont/Metiers/.../current'`.
+
+### Ce qu'est réellement ce message
+
+Pas un bug, ni propre à ce dossier : une mesure de sécurité de git
+lui-même (depuis la CVE-2022-24765) qui refuse d'opérer sur un dépôt
+dont il ne peut pas établir clairement le propriétaire -- déclenchée de
+façon quasi systématique sur un chemin réseau (lecteur mappé M:\\... vers
+un partage SMB), même quand rien n'est réellement compromis. Un
+implication plus large a été vérifiée : le même mécanisme touche
+n'importe quelle commande git dans ce dossier, y compris `git pull`
+dans `launch.ps1` -- potentiellement un facteur supplémentaire (ou
+alternatif) dans le blocage de version déjà résolu par ailleurs
+(nettoyage du cache bytecode, V0.1.38).
+
+### Correctif
+
+git indique lui-même, dans son propre message d'erreur, la commande
+exacte pour lever ce blocage (`git config --global --add safe.directory
+...`) -- reprise telle quelle plutôt que reconstruite (le format exact
+attendu, avec le préfixe `%(prefix)///` pour les chemins réseau, dépend
+de la version de git et ne vaut pas la peine d'être deviné). `git add`
+(jamais vérifié jusqu'ici -- corrigé au passage) et `git commit`
+détectent maintenant ce blocage spécifiquement, appliquent le correctif
+automatiquement, puis rejouent la commande qui avait échoué.
+
+Reproduit avec un vrai dépôt git (propriétaire changé pour déclencher
+réellement la vérification de git, pas seulement un message d'erreur
+simulé) avant d'écrire le correctif, puis avec le correctif en place :
+le blocage se produit bien sans lui, et le commit aboutit réellement
+avec lui (vérifié dans l'historique git, pas seulement par l'absence
+d'erreur).
+
+Même correctif appliqué à `git pull` dans `launch.ps1` (PowerShell,
+livré séparément du zip applicatif). Faute d'interpréteur PowerShell
+disponible pour le tester directement, relu avec soin (équilibre des
+accolades/parenthèses vérifié, syntaxe comparée à des patrons
+PowerShell déjà utilisés ailleurs dans le même fichier) mais **pas
+vérifié empiriquement** comme le reste -- à surveiller au prochain
+lancement plutôt qu'à considérer acquis.
+
+### Testé
+
+270 tests automatisés (3 nouveaux, dont une reproduction complète avec
+un vrai dépôt git). Ignoré proprement si l'environnement de test ne
+permet pas de changer le propriétaire d'un fichier (nécessite les
+privilèges root).
+
+### Fichiers modifiés
+
+`app/scripts/appliquer_version.py` (fonction
+`_resoudre_dubious_ownership_si_applicable`, `git add` vérifié),
+`tests/test_appliquer_version.py`, `README.md`. `launch.ps1` (livré
+séparément, hors du zip applicatif comme toujours) mis à jour avec le
+même correctif.

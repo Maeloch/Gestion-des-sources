@@ -105,7 +105,10 @@
                 <label for="commentaire">Commentaire (facultatif) :</label>
                 <input type="text" id="commentaire">
 
-                <button type="submit" class="primary">Enregistrer</button>
+                <div class="modal-actions sans-suppression">
+                    <button type="button" onclick="closeModal()">Annuler</button>
+                    <button type="submit" class="primary">Enregistrer</button>
+                </div>
             </form>
 
             <script>
@@ -210,9 +213,9 @@
                 <label for="edit_commentaire">Commentaire :</label>
                 <input type="text" id="edit_commentaire">
 
-                <div class="actions-row" style="justify-content:space-between; align-items:center; margin-top:1rem;">
+                <div class="modal-actions">
                     <button type="button" class="danger" onclick="supprimerConsumption()">Supprimer</button>
-                    <div class="actions-row" style="margin:0; align-items:center;">
+                    <div class="modal-actions-droite">
                         <button type="button" onclick="closeEditModal()">Annuler</button>
                         <button type="submit" class="primary">Enregistrer</button>
                     </div>

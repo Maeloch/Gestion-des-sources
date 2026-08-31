@@ -61,6 +61,18 @@ app.add_middleware(
 # Monter les fichiers statiques
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Les navigateurs sondent systématiquement /favicon.ico à la racine
+    du site, en plus des balises <link rel="icon"> du <head> -- sans
+    cette route, ces requêtes tombaient en 404 (visible régulièrement
+    dans les journaux uvicorn). Le fichier lui-même vit dans
+    app/static/ comme les autres ressources statiques ; cette route
+    sert juste à le rendre aussi joignable à la racine, là où les
+    navigateurs le cherchent d'eux-mêmes."""
+    from fastapi.responses import FileResponse
+    return FileResponse("app/static/favicon.ico")
+
 # Configurer les templates
 templates = Jinja2Templates(directory="app/templates")
 # Utilisable directement dans les templates : {{ arrondir_scientifique(valeur) }}
@@ -90,6 +102,20 @@ def _redirect_to_login_if_needed(current_user):
 
 
 # Routes pour les pages HTML
+
+@app.get("/version")
+async def version_endpoint():
+    """Renvoie la version actuellement en cours d'exécution -- ajouté le
+    31/07/2026, pour que appliquer_version.py puisse vérifier après coup
+    qu'un serveur déjà lancé a bien pris en compte la mise à jour (plutôt
+    que de se fier au seul avertissement textuel affiché, insuffisant en
+    pratique : la V0.1.34 est restée active plusieurs versions après son
+    remplacement sur disque, --reload ayant mal réagi sur ce lecteur
+    réseau Windows sans que ça se voie autrement qu'en relisant la page).
+    Volontairement sans authentification : ce n'est qu'un numéro de
+    version, rien de sensible, et la vérification doit pouvoir se faire
+    avant même qu'une session soit ouverte."""
+    return {"version": APP_VERSION}
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request, current_user=Depends(get_current_user_optional)):
@@ -195,6 +221,15 @@ async def fiche_source(source_id: str, request: Request, db: Session = Depends(g
     mouvements = sorted(MovementRepository(db).get_by_source(source_id), key=lambda m: m.timestamp, reverse=True)
     consommations = sorted(ConsumptionRepository(db).get_by_source(source_id), key=lambda c: c.timestamp, reverse=True)
     audit_logs = AuditRepository(db).get_by_source(source_id)
+
+    # Masses affichées avec leur unité -- oubliées ici jusqu'au 31/07/2026
+    # (contrairement à la page Consommations, qui l'affiche déjà pour la
+    # quantité utilisée) : même unité que la source (source.unite_quantite),
+    # puisqu'une masse pesée n'a de sens que dans celle-ci.
+    unite_quantite = source.unite_quantite.value if source.unite_quantite else ""
+    for c in consommations:
+        c.masse_avant_affichee = f"{c.masse_avant} {unite_quantite}".strip() if c.masse_avant is not None else "—"
+        c.masse_apres_affichee = f"{c.masse_apres} {unite_quantite}".strip() if c.masse_apres is not None else "—"
 
     en_emprunt = any(m.date_retour_reelle is None for m in mouvements)
     peut_emprunter = not en_emprunt and bool(source.emplacement_habituel_id) and not is_archived(source)

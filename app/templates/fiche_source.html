@@ -18,7 +18,7 @@
             </div>
             {% if current_user and current_user.role.value != "lecteur" and (not archivee or current_user.role.value == "admin") %}
             <div class="actions-row" style="margin:0;">
-                <a href="/sources?recherche={{ source.id | urlencode }}"><button type="button">Modifier</button></a>
+                <a href="/sources?recherche={{ source.id | urlencode }}&modifier={{ source.id | urlencode }}"><button type="button">Modifier</button></a>
                 {% if source.etat_physique.value in ("gaz", "liquide") and not archivee %}
                 <a href="/consumptions?source={{ source.id }}"><button type="button">Consommer</button></a>
                 {% endif %}
@@ -112,8 +112,8 @@
                 {% for c in consommations %}
                 <tr>
                     <td>{{ c.timestamp | date_fr }}</td>
-                    <td class="mono">{{ c.masse_avant if c.masse_avant is not none else "—" }}</td>
-                    <td class="mono">{{ c.masse_apres if c.masse_apres is not none else "—" }}</td>
+                    <td class="mono">{{ c.masse_avant_affichee }}</td>
+                    <td class="mono">{{ c.masse_apres_affichee }}</td>
                     <td class="mono">{{ arrondir_scientifique(c.quantite_utilisee) }}</td>
                     <td>{{ c.commentaire or "—" }}</td>
                     <td>{{ c.utilisateur or "—" }}</td>

@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Gestion des Sources Radioactives{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v={{ app_version }}">
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico?v={{ app_version }}">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ app_version }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -97,7 +100,10 @@
                         <label for="mdp_confirme">Confirmer le nouveau mot de passe :</label>
                         <input type="password" id="mdp_confirme" required minlength="8">
 
-                        <button type="submit" class="primary">Enregistrer</button>
+                        <div class="modal-actions sans-suppression">
+                            <button type="button" onclick="fermerModalMotDePasse()">Annuler</button>
+                            <button type="submit" class="primary">Enregistrer</button>
+                        </div>
                     </form>
                 </div>
             </div>
@@ -120,7 +126,10 @@
                         <label for="role_commentaire">Message pour l'administrateur (facultatif) :</label>
                         <input type="text" id="role_commentaire">
 
-                        <button type="submit" class="primary">Envoyer la demande</button>
+                        <div class="modal-actions sans-suppression">
+                            <button type="button" onclick="fermerModalDemandeRole()">Annuler</button>
+                            <button type="submit" class="primary">Envoyer la demande</button>
+                        </div>
                     </form>
                 </div>
             </div>

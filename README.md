@@ -1,6 +1,6 @@
 # Gestion des Sources Radioactives
 
-**Version 0.1.36** — affichée en bas de la barre latérale de l'application. En cas
+**Version 0.1.41** — affichée en bas de la barre latérale de l'application. En cas
 de doute sur la version que tu es en train de tester (par exemple si tu as
 plusieurs dossiers de versions différentes sur ta machine), regarde le pied
 de page : le numéro doit correspondre à celui annoncé dans le message de
@@ -401,6 +401,64 @@ si le problème se répète souvent : arrêter le serveur AVANT de lancer
 qui évite complètement le risque, au prix d'une brève coupure du
 service pendant la mise à jour.
 
+**Vérification automatique ajoutée (31/07/2026)** : l'avertissement
+seul s'est montré insuffisant en pratique (une version est restée
+active plusieurs mises à jour après son remplacement sur disque, sans
+que ça se voie autrement qu'en relisant soi-même le numéro affiché).
+`appliquer_version.py` interroge maintenant lui-même le serveur déjà
+lancé (`http://127.0.0.1:8000/version`, nouvel endpoint sans
+authentification) une fois la mise à jour terminée, et affiche un
+avertissement impossible à manquer si la version répondue ne correspond
+pas à celle qui vient d'être déployée. Ne bloque jamais si le serveur
+n'est pas joignable (pas encore lancé, port différent...) : c'est une
+vérification de confort, pas une étape obligatoire.
+
+### F. La vraie cause, trouvée le 31/07/2026 : le cache bytecode Python, pas le rechargement
+
+La vérification ci-dessus (section E) a eu le mérite de confirmer que
+le problème n'était PAS le rechargement automatique : le même symptôme
+persistait avec `--reload` désactivé et un arrêt/relance complets du
+serveur avant chaque mise à jour. La vraie cause, reproduite
+empiriquement (pas seulement supposée) : quand un fichier `.py` est
+remplacé et se retrouve, par coïncidence, avec exactement la même (date
+de modification, taille en octets) que l'ancien qu'il remplace — plus
+probable sur un lecteur réseau, où la granularité d'horodatage est plus
+grossière que sur un disque local — Python considère à tort son cache
+compilé (`__pycache__`) comme toujours valide, et continue à exécuter
+silencieusement le bytecode de l'ANCIENNE version, même après un
+redémarrage complet et avec un fichier source parfaitement à jour sur
+disque. Explique aussi pourquoi les fichiers non-Python (gabarits HTML,
+CSS) se mettaient à jour normalement pendant que le numéro de version
+(lu depuis un module Python) restait bloqué, et pourquoi ce problème
+n'est jamais apparu sur Hyperion (disque local, pas de lecteur réseau).
+
+`appliquer_version.py` supprime maintenant systématiquement tous les
+dossiers `__pycache__` de l'installation cible à chaque mise à jour
+(jamais copiés depuis la nouvelle version, donc jamais remplacés par la
+copie elle-même) : Python les régénère automatiquement depuis le code
+source actuel dès le prochain import, sans dépendre d'une comparaison
+d'horodatage qui a démontré ne pas être fiable dans ce contexte précis.
+
+### G. "fatal: detected dubious ownership" (31/08/2026)
+
+Message affiché par git lui-même, pas une erreur du script : une mesure
+de sécurité de git (depuis la CVE-2022-24765) qui refuse d'opérer sur
+un dépôt dont il ne peut pas établir clairement le propriétaire —
+quasi systématique sur un chemin réseau (lecteur mappé type `M:\...`
+vers un partage SMB), même quand rien n'est réellement compromis.
+Touche n'importe quelle commande git dans ce dossier, pas seulement
+celle qui a échoué en premier — y compris `git pull` dans `launch.ps1`,
+un facteur à ne pas exclure dans d'éventuels blocages de mise à jour
+passés.
+
+`appliquer_version.py` (`git add`, `git commit`) et `launch.ps1`
+(`git pull`) détectent maintenant ce blocage spécifiquement et le lèvent
+automatiquement, en reprenant la commande que git suggère lui-même dans
+son propre message d'erreur (`git config --global --add safe.directory
+...`) plutôt qu'en reconstruisant le chemin à deviner. Rien à faire de
+ton côté la prochaine fois que ça se présente : le script s'en charge et
+journalise ce qu'il a fait.
+
 ## 5ter. Dates affichées en français (30/07/2026)
 
 Toutes les dates affichées en lecture seule (tableaux, fiche source,
@@ -556,9 +614,11 @@ des sources s'y appliquent (quantité restante, activité actuelle,
 éligibilité à l'emprunt).
 
 Le bouton "Modifier" y renvoie vers la liste des sources, déjà filtrée
-sur cette source précise : le formulaire de modification, assez
-complexe, n'est pas dupliqué sur cette nouvelle page, pour n'avoir
-qu'une seule version à maintenir.
+sur cette source précise, et ouvre directement le formulaire de
+modification (31/07/2026 : fallait auparavant recliquer "Modifier" une
+seconde fois une fois sur la liste) : le formulaire, assez complexe,
+n'est pas dupliqué sur cette nouvelle page, pour n'avoir qu'une seule
+version à maintenir.
 
 ## 8. Archivage des sources
 

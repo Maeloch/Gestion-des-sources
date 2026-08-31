@@ -760,3 +760,16 @@ def test_quantite_calculee_presente_des_la_reponse_de_creation(admin_client, def
     resp2 = admin_client.put(f"/sources/SRC-CALC-CREATION", json={"commentaire": "test"})
     assert resp2.status_code == 200
     assert resp2.json()["quantite_calculee"] == 10.0
+
+
+def test_page_movements_redirige_vers_url_propre_apres_soumission(admin_client):
+    """31/07/2026, signalé directement : après un emprunt réussi, la
+    pop-up d'emprunt se rouvrait -- window.location.reload() gardait
+    ?source=XXX dans l'URL (arrivée sur cette page depuis le bouton
+    "Emprunter" d'une source), ce qui redéclenchait l'ouverture
+    automatique de cette même pop-up juste après le succès. Les trois
+    soumissions de cette page redirigent maintenant vers une URL propre
+    plutôt que de recharger la même."""
+    page = admin_client.get("/movements")
+    assert "window.location.reload()" not in page.text
+    assert page.text.count("window.location.href = '/movements'") == 3

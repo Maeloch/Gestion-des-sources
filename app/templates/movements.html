@@ -96,7 +96,10 @@
                 <label for="commentaire">Commentaire (facultatif) :</label>
                 <input type="text" id="commentaire">
 
-                <button type="submit" class="primary">Enregistrer la sortie</button>
+                <div class="modal-actions sans-suppression">
+                    <button type="button" onclick="closeModal()">Annuler</button>
+                    <button type="submit" class="primary">Enregistrer la sortie</button>
+                </div>
             </form>
             {% else %}
             <p class="text-muted">Aucune source disponible : soit il n'y a pas encore de source avec un lieu habituel défini (pop-up de modification d'une source), soit toutes celles auxquelles tu as accès sont déjà sorties.</p>
@@ -116,7 +119,10 @@
                 <label for="retour_commentaire">Commentaire (facultatif) :</label>
                 <input type="text" id="retour_commentaire">
 
-                <button type="submit" class="primary">Confirmer le retour</button>
+                <div class="modal-actions sans-suppression">
+                    <button type="button" onclick="closeRetourModal()">Annuler</button>
+                    <button type="submit" class="primary">Confirmer le retour</button>
+                </div>
             </form>
         </div>
     </div>
@@ -139,7 +145,10 @@
                 <label for="loc_piece">Pièce (facultatif) :</label>
                 <input type="text" id="loc_piece">
 
-                <button type="submit" class="primary">Ajouter</button>
+                <div class="modal-actions sans-suppression">
+                    <button type="button" onclick="closeAddLocationModal()">Annuler</button>
+                    <button type="submit" class="primary">Ajouter</button>
+                </div>
             </form>
         </div>
     </div>
@@ -200,7 +209,13 @@
                     body: JSON.stringify(payload),
                 });
                 if (response.ok) {
-                    window.location.reload();
+                    // Redirection vers une URL propre plutôt qu'un simple
+                    // reload() -- corrigé le 31/07/2026 : reload() aurait
+                    // gardé ?source=XXX dans l'URL (arrivé ici depuis le
+                    // bouton "Emprunter" d'une source), ce qui rouvrait
+                    // aussitôt cette même pop-up d'emprunt après un
+                    // succès, comme si rien ne s'était passé.
+                    window.location.href = '/movements';
                 } else if (response.status === 401) {
                     window.location.href = '/auth/login';
                 } else {
@@ -222,7 +237,7 @@
                 body: JSON.stringify(payload),
             });
             if (response.ok) {
-                window.location.reload();
+                window.location.href = '/movements';
             } else if (response.status === 401) {
                 window.location.href = '/auth/login';
             } else {
@@ -245,7 +260,7 @@
                 body: JSON.stringify(payload),
             });
             if (response.ok) {
-                window.location.reload();
+                window.location.href = '/movements';
             } else if (response.status === 401) {
                 window.location.href = '/auth/login';
             } else {

@@ -281,3 +281,18 @@ def test_message_ignore_ne_reference_plus_de_fonction_python(admin_client, defau
 
     assert "activites_par_radionuclide_bq" not in page.text
     assert "aucune activité calculable" in page.text
+
+
+def test_page_spectre_formulaire_retravaille(admin_client):
+    """31/07/2026, signalé directement : le formulaire manquait
+    d'élégance -- trois libellés de longueurs très inégales cassaient
+    l'alignement. Retravaillé : plage de dates groupée visuellement,
+    date de référence séparée par un séparateur vertical."""
+    page = admin_client.get("/consumptions/spectre")
+    assert 'class="spectre-form"' in page.text
+    assert "Période examinée" in page.text
+    assert 'class="spectre-form-separateur"' in page.text
+    # Les trois champs de date doivent toujours être présents et fonctionnels.
+    assert 'id="date_debut"' in page.text
+    assert 'id="date_fin"' in page.text
+    assert 'id="date_reference"' in page.text

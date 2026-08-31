@@ -67,17 +67,37 @@ def test_fiche_source_bouton_emprunter_present_si_disponible(admin_client, defau
     assert 'href="/movements?source=SRC-FICHE-DISPONIBLE"' in page.text
 
 
-def test_fiche_source_bouton_modifier_renvoie_vers_liste_filtree(admin_client, default_location):
-    """Choix délibéré : pas de duplication du formulaire complexe de
-    modification sur cette nouvelle page -- "Modifier" renvoie vers la
-    liste filtrée, où ce formulaire existe déjà et fonctionne."""
+def test_fiche_source_masses_consommees_avec_unite(admin_client, default_location):
+    """31/07/2026, signalé directement : les masses avant/après d'une
+    consommation n'affichaient aucune unité sur cette page, contrairement
+    à la page Consommations elle-même."""
+    admin_client.post("/sources/", json={
+        "id": "SRC-MASSE-UNITE", "type": "non-scellée", "etat_physique": "liquide",
+        "etat_utilisation": "en utilisation", "date_arrivee": "2020-01-01",
+        "emplacement_habituel_id": default_location, "quantite_initiale": 200, "unite_quantite": "g",
+    })
+    admin_client.post("/consumptions/", json={
+        "source_id": "SRC-MASSE-UNITE", "masse_avant": 200, "masse_apres": 190,
+    })
+    page = admin_client.get("/sources/SRC-MASSE-UNITE/fiche")
+    assert "200.0 g" in page.text
+    assert "190.0 g" in page.text
+
+
+def test_fiche_source_bouton_modifier_ouvre_directement_le_formulaire(admin_client, default_location):
+    """31/07/2026 : "Modifier" renvoyait vers la liste filtrée, mais
+    fallait recliquer "Modifier" une seconde fois pour arriver au
+    formulaire -- signalé comme confus. Toujours pas de duplication du
+    formulaire complexe sur cette page (choix maintenu), mais le lien
+    ouvre maintenant directement le formulaire via ?modifier=XXX, même
+    principe que ?source=XXX sur Consommations/Mouvements."""
     admin_client.post("/sources/", json={
         "id": "SRC-FICHE-MODIFIER", "type": "scellée", "etat_physique": "solide",
         "etat_utilisation": "en utilisation", "date_arrivee": "2020-01-01",
         "emplacement_habituel_id": default_location,
     })
     page = admin_client.get("/sources/SRC-FICHE-MODIFIER/fiche")
-    assert 'href="/sources?recherche=SRC-FICHE-MODIFIER"' in page.text
+    assert 'href="/sources?recherche=SRC-FICHE-MODIFIER&modifier=SRC-FICHE-MODIFIER"' in page.text
     assert "openEditModal" not in page.text
 
 

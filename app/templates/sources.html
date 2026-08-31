@@ -334,7 +334,7 @@
 
                 <p class="hint">La quantité restante n'est plus saisie ici : elle se calcule automatiquement à partir de l'activité du radionucléide (bouton "+ Ajouter un radionucléide") et des consommations enregistrées.</p>
 
-                <div class="actions-row" style="justify-content:flex-end; margin-top:1rem;">
+                <div class="modal-actions sans-suppression">
                     <button type="button" onclick="closeModal()">Annuler</button>
                     <button type="submit" class="primary">Enregistrer</button>
                 </div>
@@ -382,7 +382,10 @@
 
                 <input type="hidden" id="rn_lien_laraweb">
 
-                <button type="submit" class="primary">Ajouter</button>
+                <div class="modal-actions sans-suppression">
+                    <button type="button" onclick="closeAddRnModal()">Annuler</button>
+                    <button type="submit" class="primary">Ajouter</button>
+                </div>
             </form>
         </div>
     </div>
@@ -405,7 +408,10 @@
                 <label for="loc_piece">Pièce (facultatif) :</label>
                 <input type="text" id="loc_piece">
 
-                <button type="submit" class="primary">Ajouter</button>
+                <div class="modal-actions sans-suppression">
+                    <button type="button" onclick="closeAddLocationModal()">Annuler</button>
+                    <button type="submit" class="primary">Ajouter</button>
+                </div>
             </form>
         </div>
     </div>
@@ -713,6 +719,19 @@
             document.getElementById('rn_activite_specifique').checked = !!r.activite_est_specifique;
             if (r.date_reference) document.getElementById('rn_date_reference').value = r.date_reference;
         })();
+
+        // ?modifier=XXX dans l'URL -- ouvre directement le formulaire de
+        // modification (pas seulement la liste filtrée) : ajouté le
+        // 31/07/2026, pour que "Modifier" depuis la fiche source amène
+        // en un clic au formulaire, plutôt qu'à la liste où il fallait
+        // recliquer sur "Modifier" une seconde fois. Même principe que
+        // ?source=XXX sur Consommations/Mouvements (voir ces pages).
+        // Doit vivre ICI (après la définition de openEditModal ci-dessus,
+        // dans ce même bloc <script>) : ce fichier a deux blocs <script>
+        // séparés, et une fonction définie dans le second n'est pas
+        // encore disponible tant que le premier s'exécute.
+        const idAModifier = new URLSearchParams(window.location.search).get('modifier');
+        if (idAModifier) openEditModal(idAModifier);
     </script>
     {% endif %}
 {% endblock %}

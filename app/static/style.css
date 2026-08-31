@@ -343,6 +343,50 @@ td.mono, .table-id { font-family: var(--font-mono); font-size: 0.83rem; }
 .fiche-grid > div { display: flex; flex-direction: column; gap: 0.15rem; }
 .fiche-label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
 
+/* ---- Formulaire du spectre-type (dates) ----
+   Retravaillé le 31/07/2026 : les trois champs de date avaient des
+   libellés de longueurs très inégales ("Du", "Au", "Spectre à la date
+   du"), ce qui cassait l'alignement vertical entre eux. Regroupe
+   visuellement "Du"/"Au" (une même idée : la plage à examiner),
+   sépare clairement la date de référence (un concept différent : à
+   quelle date calculer la décroissance) par un séparateur vertical. */
+.spectre-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 1.4rem;
+}
+.spectre-form-groupe { display: flex; flex-direction: column; gap: 0.3rem; }
+.spectre-form-groupe-titre {
+    font-size: 0.78rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.spectre-form-plage { display: flex; align-items: center; gap: 0.5rem; }
+.spectre-form-plage label { font-size: 0.8rem; margin: 0; }
+.spectre-form-fleche { color: var(--muted-2); margin: 0 0.1rem; }
+.spectre-form-separateur { align-self: stretch; width: 1px; background: var(--border); margin: 0 0.2rem; }
+
+/* ---- Boutons de bas de pop-up (Annuler / Enregistrer / Supprimer) ----
+   Ajouté le 31/07/2026 : remplace les styles en ligne répétés (et
+   parfois oubliés) sur chaque pop-up par une seule classe -- une
+   modification ici se propage partout, plutôt que de risquer une
+   dérive entre pop-up au fil du temps. Toujours align-items:center
+   (largeurs de bouton différentes ne doivent jamais donner des hauteurs
+   différentes) ; justify-content:space-between quand Supprimer est
+   présent (poussé à gauche, Annuler/Enregistrer groupés à droite),
+   flex-end sinon (Annuler/Enregistrer seuls, à droite). */
+.modal-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-top: 1.2rem;
+}
+.modal-actions.sans-suppression { justify-content: flex-end; }
+.modal-actions-droite { display: flex; align-items: center; gap: 0.6rem; }
+
 /* ---- Recherche libre ---- */
 .recherche-libre { margin-bottom: 0.75rem; }
 .recherche-libre input {
