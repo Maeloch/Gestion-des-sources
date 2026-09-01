@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}{{ utilisateur.username }} — Fiche utilisateur{% endblock %}
+{% block page_title %}Utilisateur {{ utilisateur.username }}{% endblock %}
+
+{% block content %}
+    <p class="page-lead mt-0"><a href="/users">← Retour à la liste des utilisateurs</a></p>
+
+    <div class="card">
+        <div class="actions-row" style="justify-content:space-between; align-items:center;">
+            <div style="display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
+                <span class="mono" style="font-size:1.15rem; font-weight:600;">{{ utilisateur.username }}</span>
+                {% if utilisateur.is_active %}
+                <span class="badge badge-active">compte actif</span>
+                {% else %}
+                <span class="badge badge-archived">historique — jamais connecté</span>
+                {% endif %}
+            </div>
+            <button type="button" onclick="document.getElementById('fusionModal').classList.add('open')">Fusionner avec...</button>
+        </div>
+
+        <div class="fiche-grid">
+            <div><span class="fiche-label">Nom complet</span><span>{{ utilisateur.full_name or "—" }}</span></div>
+            <div><span class="fiche-label">Email</span><span>{{ utilisateur.email or "—" }}</span></div>
+            <div><span class="fiche-label">Rôle</span><span>{{ utilisateur.role.value if utilisateur.is_active else "— (sans objet, jamais connecté)" }}</span></div>
+        </div>
+        {% if not utilisateur.is_active %}
+        <p class="page-lead" style="margin-top:0.9rem;">Enregistrement historique : cette personne n'a pas de compte et ne peut pas se connecter. Son nom a été rattaché automatiquement à partir d'une action tracée (import de données historiques, ou déjà en base) pour qu'aucune consommation, aucun mouvement et aucune entrée d'audit ne reste sans utilisateur associé.</p>
+        {% endif %}
+    </div>
+
+    <h3>Consommations</h3>
+    <div class="card">
+        {% if consommations %}
+        <table>
+            <thead><tr><th>Date</th><th>Source</th><th>Quantité</th><th>Commentaire</th></tr></thead>
+            <tbody>
+                {% for c in consommations %}
+                <tr>
+                    <td>{{ c.timestamp | date_fr }}</td>
+                    <td class="table-id"><a href="/sources/{{ c.source_id | urlencode }}/fiche">{{ c.source_id }}</a></td>
+                    <td class="mono">{{ arrondir_scientifique(c.quantite_utilisee) }}</td>
+                    <td>{{ c.commentaire or "—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="page-lead" style="margin:0;">Aucune consommation rattachée à cet utilisateur.</p>
+        {% endif %}
+    </div>
+
+    <h3>Mouvements</h3>
+    <div class="card">
+        {% if mouvements %}
+        <table>
+            <thead><tr><th>Date</th><th>Source</th><th>Vers</th><th>Retour</th></tr></thead>
+            <tbody>
+                {% for m in mouvements %}
+                <tr>
+                    <td>{{ m.timestamp | date_fr }}</td>
+                    <td class="table-id"><a href="/sources/{{ m.source_id | urlencode }}/fiche">{{ m.source_id }}</a></td>
+                    <td>{{ m.to_location.nom if m.to_location else "—" }}</td>
+                    <td>{% if m.date_retour_reelle %}{{ m.date_retour_reelle | date_fr }}{% else %}<span class="badge badge-active">en cours</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="page-lead" style="margin:0;">Aucun mouvement rattaché à cet utilisateur.</p>
+        {% endif %}
+    </div>
+
+    <h3>Audit</h3>
+    <div class="card">
+        {% if audit_logs %}
+        <table>
+            <thead><tr><th>Date</th><th>Action</th><th>Source</th><th>Détail</th></tr></thead>
+            <tbody>
+                {% for a in audit_logs %}
+                <tr>
+                    <td>{{ a.timestamp | date_fr(avec_heure=True) }}</td>
+                    <td>{{ a.action.value }}</td>
+                    <td class="table-id">{% if a.id_source %}<a href="/sources/{{ a.id_source | urlencode }}/fiche">{{ a.id_source }}</a>{% else %}—{% endif %}</td>
+                    <td>{{ a.champ_modifie or "—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="page-lead" style="margin:0;">Aucune entrée d'audit rattachée à cet utilisateur.</p>
+        {% endif %}
+    </div>
+
+    <div class="modal-overlay" id="fusionModal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="document.getElementById('fusionModal').classList.remove('open')">&times;</button>
+            <h3>Fusionner "{{ utilisateur.username }}" avec...</h3>
+            <p class="hint">Tout ce qui est rattaché à "{{ utilisateur.username }}" (consommations, mouvements, audit) sera transféré vers l'utilisateur choisi, qui seul survivra. "{{ utilisateur.username }}" sera définitivement supprimé -- l'opération elle-même reste tracée dans l'audit.</p>
+            <form id="fusionForm">
+                <label for="fusion_cible">Fusionner vers :</label>
+                <select id="fusion_cible" required>
+                    {% for autre in autres_utilisateurs %}
+                    <option value="{{ autre.id }}">{{ autre.username }}{% if not autre.is_active %} (historique){% endif %}</option>
+                    {% endfor %}
+                </select>
+                <div class="modal-actions sans-suppression">
+                    <button type="button" onclick="document.getElementById('fusionModal').classList.remove('open')">Annuler</button>
+                    <button type="submit" class="danger">Fusionner</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('fusionForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const cibleId = document.getElementById('fusion_cible').value;
+            const cibleTexte = document.getElementById('fusion_cible').selectedOptions[0].textContent;
+            if (!confirm(`Fusionner "{{ utilisateur.username }}" vers "${cibleTexte}" ? "{{ utilisateur.username }}" sera définitivement supprimé après transfert de son historique. Cette action est irréversible.`)) {
+                return;
+            }
+            const response = await fetch(`/users/{{ utilisateur.id }}/fusionner`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cible_id: parseInt(cibleId) }),
+            });
+            if (response.ok) {
+                window.location.href = `/users/${cibleId}/fiche`;
+            } else if (response.status === 401) {
+                window.location.href = '/auth/login';
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        });
+    </script>
+{% endblock %}

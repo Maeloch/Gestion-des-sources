@@ -1,5 +1,6 @@
 """Modèle pour les logs d'audit."""
-from sqlalchemy import Column, Integer, String, DateTime, Enum as SQLAlchemyEnum  # ← Utilise SQLAlchemyEnum
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum as SQLAlchemyEnum  # ← Utilise SQLAlchemyEnum
+from sqlalchemy.orm import relationship
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from datetime import datetime
@@ -23,6 +24,9 @@ class AuditLogDB(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     utilisateur = Column(String(50), nullable=False)
+    # Voir consumption.py pour le raisonnement complet (même ajout,
+    # 31/08/2026).
+    utilisateur_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     action = Column(SQLAlchemyEnum(AuditAction), nullable=False)  # ← Utilise SQLAlchemyEnum
     table_modifiee = Column(String(50), nullable=False)
     id_source = Column(String(50), nullable=True)
@@ -30,6 +34,7 @@ class AuditLogDB(Base):
     valeur_avant = Column(String(255), nullable=True)
     valeur_apres = Column(String(255), nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    utilisateur_lie = relationship("UserDB")
 
 # Modèles Pydantic
 class AuditLogBase(BaseModel):

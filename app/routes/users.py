@@ -60,9 +60,84 @@ async def delete_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Tu ne peux pas supprimer ton propre compte depuis cette page.",
         )
+    # Protection ajoutée le 31/08/2026 : un utilisateur qui a réalisé au
+    # moins une action tracée (consommation, mouvement, audit) ne doit
+    # jamais pouvoir être supprimé -- ça romprait le principe "jamais
+    # sans attache" tout juste établi. "Fusionner" (voir plus bas) est
+    # le seul chemin pour faire disparaître un enregistrement qui porte
+    # de l'historique, en le transférant d'abord vers un autre.
+    from app.models.consumption import ConsumptionDB
+    from app.models.movement import MovementDB
+    from app.models.audit import AuditLogDB
+    porte_historique = (
+        db.query(ConsumptionDB).filter(ConsumptionDB.utilisateur_id == user_id).first() is not None
+        or db.query(MovementDB).filter(MovementDB.utilisateur_id == user_id).first() is not None
+        or db.query(AuditLogDB).filter(AuditLogDB.utilisateur_id == user_id).first() is not None
+    )
+    if porte_historique:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cet utilisateur a au moins une action tracée (consommation, mouvement ou "
+                   "audit) rattachée : impossible de le supprimer. Fusionne-le avec un autre "
+                   "utilisateur depuis sa fiche si tu veux le faire disparaître.",
+        )
     repo = UserRepository(db)
     if not repo.delete(user_id):
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+    return
+
+
+class FusionRequest(BaseModel):
+    cible_id: int
+
+
+@router.post("/{user_id}/fusionner", status_code=status.HTTP_204_NO_CONTENT)
+async def fusionner_utilisateur(
+    user_id: int,
+    payload: FusionRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_admin),
+):
+    """Fusionne `user_id` (supprimé) vers `payload.cible_id` (qui
+    survit) -- demandé le 31/08/2026, pour nettoyer un doublon (ex:
+    deux enregistrements créés pour la même personne, sous deux
+    variantes orthographiques n'ayant pas été rapprochées
+    automatiquement). Tout ce qui pointait vers user_id (consommations,
+    mouvements, audit -- champ utilisateur_id ET le texte utilisateur,
+    repris du nom de la cible pour rester cohérent avec le nouveau lien)
+    est réattaché avant la suppression : jamais d'action orpheline,
+    même temporairement pendant l'opération elle-même. La fusion est
+    elle-même tracée dans l'audit -- qui, comme tout le reste, se
+    retrouve donc rattaché à la cible après coup."""
+    if user_id == payload.cible_id:
+        raise HTTPException(status_code=400, detail="Impossible de fusionner un utilisateur avec lui-même.")
+
+    repo = UserRepository(db)
+    source = repo.get_by_id(user_id)
+    cible = repo.get_by_id(payload.cible_id)
+    if not source or not cible:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé (source ou cible).")
+
+    from app.models.consumption import ConsumptionDB
+    from app.models.movement import MovementDB
+    from app.models.audit import AuditLogDB
+
+    for Modele in (ConsumptionDB, MovementDB, AuditLogDB):
+        db.query(Modele).filter(Modele.utilisateur_id == user_id).update(
+            {"utilisateur_id": cible.id, "utilisateur": cible.username}
+        )
+
+    AuditRepository(db).create(AuditLogCreate(
+        utilisateur=current_user.username,
+        action="DELETE",
+        table_modifiee="users",
+        champ_modifie="fusion",
+        valeur_avant=f"{source.username} (#{source.id})",
+        valeur_apres=f"fusionné vers {cible.username} (#{cible.id})",
+    ))
+
+    db.delete(source)
+    db.commit()
     return
 
 

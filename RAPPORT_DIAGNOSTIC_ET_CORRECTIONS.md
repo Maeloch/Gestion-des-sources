@@ -3460,3 +3460,125 @@ privilèges root).
 `tests/test_appliquer_version.py`, `README.md`. `launch.ps1` (livré
 séparément, hors du zip applicatif comme toujours) mis à jour avec le
 même correctif.
+
+---
+
+## 49. V0.1.42 (31/08/2026) : lier les consommations/mouvements/audit à un véritable utilisateur
+
+### La demande
+
+Trois volets, discutés avant modification comme proposé : rattacher le
+champ "utilisateur" (jusqu'ici du texte libre) à un compte réel plutôt
+qu'un nom sans lien ; une fiche utilisateur, même esprit que la fiche
+source ; un contrôle total pour l'administrateur (fusionner, modifier),
+avec le principe directeur "jamais d'action sans utilisateur rattaché" --
+y compris pour quelqu'un qui a quitté le service depuis longtemps
+(l'exemple donné : "Liatimi", partie depuis 15 ans, dont le nom
+apparaît sur une fiche papier ancienne).
+
+### Le modèle
+
+`is_active` (déjà présent sur `UserDB`, jamais utilisé jusqu'ici)
+distingue un compte réel (peut se connecter) d'un enregistrement
+historique (jamais connectable, jamais proposé pour une nouvelle
+action, mais garde sa fiche et son historique). Email et mot de passe
+assouplis (nullable) pour ces enregistrements. `utilisateur_id`
+(clé étrangère vers `users.id`) ajouté sur Consommations, Mouvements et
+Audit, à côté du texte déjà présent (conservé tel quel).
+
+Plutôt que de modifier les 15+ points d'appel existants, la
+correspondance automatique est centralisée dans les repositories/
+services (`AuditRepository.create()`, `ConsumptionService.use_source()`,
+`MovementService.demarrer_emprunt()`) : toute nouvelle action réelle
+relie désormais automatiquement le bon compte, sans rien à changer
+ailleurs.
+
+### Correspondance insensible à la casse
+
+Signalé directement : GDO, BDL et CMO (Grégoire, Bernadette, Céline)
+sont de vrais comptes connectés. Une correspondance stricte sur la
+casse exacte aurait pu leur créer un doublon historique si le compte
+réel est enregistré autrement que l'initiale utilisée sur une fiche
+papier. Ajouté `get_by_username_insensible_casse`, utilisée
+spécifiquement pour ce rapprochement (get_ou_creer_historique) --
+n'affecte ni la connexion ni le reste de l'application, qui continuent
+à fonctionner exactement comme avant.
+
+### Migration et rattrapage des données déjà en base
+
+Une vraie découverte en testant plutôt qu'en se fiant au code : sur une
+base déjà existante, `Base.metadata.create_all()` ne modifie jamais une
+table déjà là -- sans un script de migration dédié
+(`migrate_add_utilisateur_id.py`, suivant le patron déjà établi par les
+migrations précédentes, appelé automatiquement au démarrage), les
+nouvelles colonnes n'apparaîtraient tout simplement pas sur une base
+existante. Trouvé en creusant un échec inattendu qui s'est révélé être,
+une fois de plus, le cache bytecode Python périmé (le même mécanisme
+diagnostiqué pour Windows, cette fois dans le bac à sable de
+développement) -- confirmant que ce correctif est généralement utile,
+pas seulement pour un lecteur réseau.
+
+Script séparé pour le rattrapage des données (`rattacher_utilisateurs_historiques.py`,
+`python -m app.scripts.rattacher_utilisateurs_historiques`) : structure
+du schéma et modification des données volontairement distinctes, pour
+ne jamais les mélanger. Reproduit et vérifié avec le scénario Liatimi
+exact : un nom sans correspondance crée un enregistrement historique ;
+le même nom sur plusieurs tables ne crée jamais qu'un seul
+enregistrement ; un second passage ne touche plus à ce qui est déjà
+rattaché.
+
+### Import historique : même logique désormais
+
+`import_consommations_historiques.py` applique la même correspondance
+(compte existant insensible à la casse, sinon enregistrement historique
+créé) pour les nouveaux imports. Le rapport affiché en ligne de
+commande liste chaque enregistrement historique créé, avec un rappel
+d'aller le fusionner depuis sa fiche si le rapprochement automatique a
+raté une variante orthographique.
+
+### Fiche utilisateur, fusion, protection contre la suppression
+
+Nouvelle page `/users/{id}/fiche` (réservée aux administrateurs, comme
+la liste elle-même) : profil, statut (compte actif ou historique), et
+tout ce qui lui est rattaché (consommations, mouvements, audit), chaque
+ligne renvoyant vers la fiche de sa source.
+
+Bouton "Fusionner avec..." depuis cette fiche : tout ce qui pointait
+vers l'utilisateur source (utilisateur_id ET le texte, repris du nom de
+la cible) est réattaché vers la cible choisie avant que la source ne
+soit supprimée -- jamais d'action orpheline, même temporairement. La
+fusion elle-même reste tracée dans l'audit.
+
+La route de suppression, jusqu'ici sans aucune garde, refuse désormais
+un utilisateur qui porte au moins une action tracée (consommation,
+mouvement ou audit) -- "fusionner" devient le seul chemin pour faire
+disparaître un tel enregistrement, sur le même principe que
+l'impossibilité de supprimer une source. Un enregistrement historique
+sans rattachement réel (créé par erreur, par exemple) reste, lui,
+normalement supprimable.
+
+### Testé
+
+291 tests automatisés (29 nouveaux). Un bug trouvé dans mes propres
+tests en les écrivant (le même piège de fixtures déjà documenté :
+client et admin_client partagent le même client de test sous-jacent) --
+corrigé en reprenant l'ordre déjà établi pour ce cas.
+
+### Fichiers ajoutés
+
+`app/scripts/migrate_add_utilisateur_id.py`,
+`app/scripts/rattacher_utilisateurs_historiques.py`,
+`app/templates/fiche_utilisateur.html`,
+`tests/test_migrate_add_utilisateur_id.py`,
+`tests/test_rattacher_utilisateurs_historiques.py`,
+`tests/test_fiche_utilisateur_et_fusion.py`.
+
+### Fichiers modifiés
+
+`app/models/{user,consumption,movement,audit}.py`,
+`app/repositories/{user,audit}.py`, `app/services/{consumption,movement}.py`,
+`app/services/import_consommations_historiques.py`,
+`app/scripts/import_consommations_historiques.py`, `app/main.py` (route
+fiche utilisateur, migration appelée au démarrage), `app/routes/users.py`
+(protection suppression, route fusion), `app/templates/users.html`
+(lien vers la fiche, badge historique), `tests/test_import_consommations_historiques.py`.

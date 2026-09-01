@@ -179,6 +179,14 @@ class ConsumptionService:
         )
         db_consumption = self.consumption_repo.create(consumption)
         db_consumption.utilisateur = utilisateur
+        # Correspondance automatique vers un compte réel (31/08/2026) :
+        # utilisateur correspond toujours à current_user.username pour une
+        # action en direct, donc cette correspondance réussit
+        # systématiquement ici -- voir audit.py pour le même principe.
+        from app.repositories.user import UserRepository
+        correspondant = UserRepository(self.db).get_by_username(utilisateur) if utilisateur else None
+        if correspondant:
+            db_consumption.utilisateur_id = correspondant.id
         self.consumption_repo.db.commit()
         self.consumption_repo.db.refresh(db_consumption)
 

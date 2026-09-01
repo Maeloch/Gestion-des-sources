@@ -39,6 +39,7 @@ import openpyxl
 
 from app.models.consumption import ConsumptionDB
 from app.models.source import SourceDB
+from app.repositories.user import UserRepository
 
 
 def _to_float(val) -> Optional[float]:
@@ -83,8 +84,19 @@ def importer_consommations_historiques(fichier_path: str, db, utilisateur_par_de
     sont possibles, ce n'est pas forcément une erreur). Rien de plus
     simple ensuite que de supprimer le doublon depuis la page
     Consommations si le signalement s'avère justifié.
+
+    Rattachement utilisateur ajouté le 31/08/2026 : la colonne
+    Utilisateur, quand elle est renseignée, est rattachée à un compte
+    existant (recherche insensible à la casse) ou à un enregistrement
+    historique nouvellement créé -- jamais laissée comme texte seul sans
+    lien, même si la personne n'a pas de compte et n'en aura jamais (cas
+    réel : quelqu'un qui a quitté le service depuis longtemps). Chaque
+    enregistrement historique créé est listé dans le rapport, pour être
+    relu et éventuellement fusionné avec un compte existant depuis la
+    fiche utilisateur si le rapprochement automatique a raté une
+    variante orthographique.
     """
-    rapport = {"consommations_creees": 0, "lignes_ignorees": [], "doublons_potentiels": []}
+    rapport = {"consommations_creees": 0, "lignes_ignorees": [], "doublons_potentiels": [], "utilisateurs_historiques_crees": []}
 
     wb = openpyxl.load_workbook(fichier_path, data_only=True)
     ws = wb.active
@@ -156,6 +168,15 @@ def importer_consommations_historiques(fichier_path: str, db, utilisateur_par_de
 
         commentaire = val(row, "Commentaire")
         utilisateur = val(row, "Utilisateur") or utilisateur_par_defaut
+        utilisateur = str(utilisateur).strip() if utilisateur else None
+
+        utilisateur_id = None
+        if utilisateur:
+            deja_connu = UserRepository(db).get_by_username_insensible_casse(utilisateur) is not None
+            utilisateur_lie = UserRepository(db).get_ou_creer_historique(utilisateur)
+            utilisateur_id = utilisateur_lie.id
+            if not deja_connu and utilisateur_lie.username not in rapport["utilisateurs_historiques_crees"]:
+                rapport["utilisateurs_historiques_crees"].append(utilisateur_lie.username)
 
         db.add(ConsumptionDB(
             source_id=source_id,
@@ -164,7 +185,8 @@ def importer_consommations_historiques(fichier_path: str, db, utilisateur_par_de
             masse_avant=masse_avant,
             masse_apres=masse_apres,
             commentaire=str(commentaire) if commentaire else None,
-            utilisateur=str(utilisateur) if utilisateur else None,
+            utilisateur=utilisateur,
+            utilisateur_id=utilisateur_id,
         ))
         rapport["consommations_creees"] += 1
 

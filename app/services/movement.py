@@ -75,6 +75,13 @@ class MovementService:
             utilisateur=utilisateur,
             timestamp=datetime.utcnow(),
         )
+        # Correspondance automatique vers un compte réel (31/08/2026) --
+        # même principe que audit.py et consumption.py.
+        if utilisateur:
+            from app.repositories.user import UserRepository
+            correspondant = UserRepository(self.movement_repo.db).get_by_username(utilisateur)
+            if correspondant:
+                db_movement.utilisateur_id = correspondant.id
         self.movement_repo.create(db_movement)
 
         db_source.emplacement_actuel_id = to_location_id

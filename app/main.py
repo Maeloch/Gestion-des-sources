@@ -19,6 +19,7 @@ from app.scripts.migrate_add_source_fields import (
     migrate_volume_recipient as _migrate_volume_recipient,
 )
 from app.scripts.migrate_add_locations_movements import migrate as _migrate_locations_movements
+from app.scripts.migrate_add_utilisateur_id import migrate as _migrate_utilisateur_id
 from app.version import APP_VERSION
 _migrate_add_role()
 _migrate_add_source_fields()
@@ -26,6 +27,7 @@ _migrate_consumptions()
 _migrate_radionuclides()
 _migrate_volume_recipient()
 _migrate_locations_movements()
+_migrate_utilisateur_id()
 
 from app.routes import (
     sources_router,
@@ -671,6 +673,55 @@ async def users_page(request: Request, db: Session = Depends(get_db), current_us
             "request": request,
             "users": users,
             "demandes_en_attente": demandes_en_attente,
+            "current_user": current_user,
+        },
+    )
+
+@app.get("/users/{user_id}/fiche", response_class=HTMLResponse)
+async def fiche_utilisateur(user_id: int, request: Request, db: Session = Depends(get_db), current_user=Depends(get_current_admin)):
+    """Fiche détaillée d'un utilisateur : qui c'est, actif ou
+    historique, et tout ce qui lui est rattaché -- demandé le
+    31/08/2026, même esprit que la fiche source. Réservée aux
+    administrateurs, comme la liste des utilisateurs elle-même (expose
+    l'email et l'historique complet d'activité d'une personne)."""
+    from app.repositories.user import UserRepository
+    from app.repositories.source import SourceRepository
+    from app.models.consumption import ConsumptionDB
+    from app.models.movement import MovementDB
+    from app.models.audit import AuditLogDB
+
+    utilisateur = UserRepository(db).get_by_id(user_id)
+    if not utilisateur:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+
+    consommations = (
+        db.query(ConsumptionDB).filter(ConsumptionDB.utilisateur_id == user_id)
+        .order_by(ConsumptionDB.timestamp.desc()).all()
+    )
+    mouvements = (
+        db.query(MovementDB).filter(MovementDB.utilisateur_id == user_id)
+        .order_by(MovementDB.timestamp.desc()).all()
+    )
+    audit_logs = (
+        db.query(AuditLogDB).filter(AuditLogDB.utilisateur_id == user_id)
+        .order_by(AuditLogDB.timestamp.desc()).limit(100).all()
+    )
+    # Pour le formulaire de fusion : n'importe quel AUTRE utilisateur
+    # peut être choisi comme cible -- pas de restriction supplémentaire
+    # ici (fusionner un compte actif dans un historique, ou l'inverse,
+    # sont tous les deux des cas légitimes selon la situation réelle).
+    autres_utilisateurs = [u for u in UserRepository(db).get_all() if u.id != user_id]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="fiche_utilisateur.html",
+        context={
+            "request": request,
+            "utilisateur": utilisateur,
+            "consommations": consommations,
+            "mouvements": mouvements,
+            "audit_logs": audit_logs,
+            "autres_utilisateurs": autres_utilisateurs,
             "current_user": current_user,
         },
     )

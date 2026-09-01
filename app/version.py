@@ -7,4 +7,4 @@ les fichiers statiques (CSS) à chaque changement de version — ce qui
 corrige au passage un probable souci de cache expliquant les pop-up qui ne
 s'affichaient plus correctement.
 """
-APP_VERSION = "0.1.41"
+APP_VERSION = "0.1.42"

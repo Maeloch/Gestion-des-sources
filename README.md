@@ -1,6 +1,6 @@
 # Gestion des Sources Radioactives
 
-**Version 0.1.41** — affichée en bas de la barre latérale de l'application. En cas
+**Version 0.1.42** — affichée en bas de la barre latérale de l'application. En cas
 de doute sur la version que tu es en train de tester (par exemple si tu as
 plusieurs dossiers de versions différentes sur ta machine), regarde le pied
 de page : le numéro doit correspondre à celui annoncé dans le message de
@@ -854,6 +854,35 @@ tous les cas).
 Les tableaux réglementaires MN 1a/2a/3a (récapitulatif par matière,
 comparaison avec la comptabilité nationale IRSN) restent à construire —
 en cours de discussion avec toi sur leurs règles précises.
+
+## 9bis. Rattachement des utilisateurs (31/08/2026)
+
+Consommations, mouvements et audit sont désormais reliés à un véritable
+enregistrement utilisateur, pas seulement un nom en texte libre. Deux
+sortes d'enregistrements : un **compte réel** (peut se connecter,
+apparaît normalement) et un **enregistrement historique** (créé
+automatiquement quand un nom rencontré à l'import ou dans les données
+déjà en base ne correspond à aucun compte -- par exemple quelqu'un qui a
+quitté le service depuis longtemps) : jamais connectable, jamais proposé
+pour une nouvelle action, mais garde sa propre fiche et son historique
+complet, pour qu'aucune action ne reste jamais sans utilisateur
+rattaché.
+
+Depuis la page **Utilisateurs**, cliquer sur un nom ouvre sa **fiche** :
+qui c'est, actif ou historique, et tout ce qui lui est rattaché
+(consommations, mouvements, audit). Bouton **"Fusionner avec..."**
+pour nettoyer un doublon (par exemple deux enregistrements créés pour
+la même personne sous deux orthographes différentes) : tout ce qui
+pointait vers l'un est réattaché vers l'autre, qui seul survit -- la
+fusion elle-même reste tracée dans l'audit. Un utilisateur qui porte au
+moins une action tracée ne peut plus être supprimé directement (fusionner
+est le seul chemin) ; un enregistrement historique sans rien de rattaché
+reste, lui, normalement supprimable.
+
+À l'import de consommations historiques (section 4bis) : la colonne
+Utilisateur, insensible à la casse, est rattachée à un compte existant
+ou à un enregistrement historique nouvellement créé. Le rapport affiché
+liste chaque enregistrement créé, à fusionner ensuite si besoin.
 
 ## 10. Interface (barre latérale + bandeau)
 

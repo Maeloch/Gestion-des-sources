@@ -62,7 +62,7 @@
         <tbody id="usersTableBody">
             {% for u in users %}
             <tr data-user-id="{{ u.id }}">
-                <td>{{ u.username }}</td>
+                <td class="table-id"><a href="/users/{{ u.id }}/fiche">{{ u.username }}</a>{% if not u.is_active %} <span class="badge badge-archived" style="font-size:0.7rem;">historique</span>{% endif %}</td>
                 <td>{{ u.full_name }}</td>
                 <td>{{ u.email }}</td>
                 {% if current_user and u.id == current_user.id %}

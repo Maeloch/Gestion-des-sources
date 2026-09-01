@@ -27,11 +27,15 @@ class MovementDB(Base):
     date_retour_prevue = Column(Date, nullable=True)
     date_retour_reelle = Column(Date, nullable=True)  # NULL = toujours "sorti"
     utilisateur = Column(String(50), nullable=True)
+    # Voir consumption.py pour le raisonnement complet (même ajout,
+    # 31/08/2026).
+    utilisateur_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     # Relations
     source = relationship("SourceDB", back_populates="movements")
     from_location = relationship("LocationDB", foreign_keys=[from_location_id])
     to_location = relationship("LocationDB", foreign_keys=[to_location_id])
+    utilisateur_lie = relationship("UserDB")
 
 # Modèles Pydantic
 class MovementBase(BaseModel):

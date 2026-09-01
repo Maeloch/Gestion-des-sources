@@ -39,6 +39,12 @@ def main() -> None:
         db.close()
 
     print(f"\n{rapport['consommations_creees']} consommation(s) créée(s).")
+    if rapport["utilisateurs_historiques_crees"]:
+        print(f"\n{len(rapport['utilisateurs_historiques_crees'])} enregistrement(s) utilisateur historique(s) "
+              f"créé(s) (jamais connectable, consultable depuis la page Utilisateurs) : "
+              f"{', '.join(rapport['utilisateurs_historiques_crees'])}")
+        print("  Si l'un d'eux correspond en fait à un compte déjà existant sous un autre nom, "
+              "fusionne-les depuis sa fiche utilisateur.")
     if rapport["doublons_potentiels"]:
         print(f"\n⚠ {len(rapport['doublons_potentiels'])} doublon(s) potentiel(s) détecté(s) (même source, même date qu'une consommation déjà connue) -- à vérifier, corriger depuis la page Consommations si besoin :")
         for d in rapport["doublons_potentiels"]:

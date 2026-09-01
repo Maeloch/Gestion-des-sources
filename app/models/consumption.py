@@ -29,9 +29,18 @@ class ConsumptionDB(Base):
     # pour les sources gaz où peser n'a pas de sens.
     masse_avant = Column(Float, nullable=True)
     masse_apres = Column(Float, nullable=True)
+    # Lien vers un enregistrement utilisateur réel (31/08/2026), à côté du
+    # texte `utilisateur` ci-dessus conservé tel quel (ce qui a été
+    # effectivement saisi/transcrit à l'origine). Nullable pour ne pas
+    # casser les données déjà en base avant la migration qui le renseigne
+    # -- voir services/utilisateurs_historiques.py -- mais l'objectif est
+    # qu'il soit toujours renseigné en pratique : aucune action ne doit
+    # rester sans utilisateur rattaché.
+    utilisateur_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     # Relations
     source = relationship("SourceDB", back_populates="consumptions")
+    utilisateur_lie = relationship("UserDB")
 
 # Modèles Pydantic
 class ConsumptionBase(BaseModel):

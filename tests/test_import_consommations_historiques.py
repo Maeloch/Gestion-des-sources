@@ -233,3 +233,85 @@ def test_genere_un_modele_vide_avec_les_bons_entetes(tmp_path):
         "Quantité utilisée", "Commentaire", "Utilisateur",
     ]
     assert ws.max_row >= 2  # au moins une ligne d'exemple
+
+
+def test_import_rattache_a_un_compte_existant_insensible_a_la_casse(admin_client, db_session, default_location, tmp_path):
+    """31/08/2026 : GDO, BDL, CMO sont de vrais comptes connectés --
+    l'import ne doit jamais leur créer un doublon historique, même si
+    la fiche papier transcrite utilise une casse différente."""
+    from app.repositories.user import UserRepository
+    from app.models.user import UserCreate, UserRole
+    bernadette = UserRepository(db_session).create(UserCreate(
+        username="Bdl", email="bdl@test.fr", password="motdepasse123", role=UserRole.utilisateur,
+    ))
+    admin_client.post("/sources/", json={
+        "id": "SRC-IMPORT-CASSE", "type": "non-scellée", "etat_physique": "liquide",
+        "etat_utilisation": "en utilisation", "date_arrivee": "2018-01-01",
+        "emplacement_habituel_id": default_location, "quantite_initiale": 200, "unite_quantite": "g",
+    })
+    chemin = _ecrire(tmp_path, [["SRC-IMPORT-CASSE", "10/03/2019", 200, 190, None, "", "BDL"]])
+
+    rapport = importer_consommations_historiques(chemin, db_session)
+
+    assert rapport["utilisateurs_historiques_crees"] == []
+    from app.models.consumption import ConsumptionDB
+    conso = db_session.query(ConsumptionDB).filter(ConsumptionDB.source_id == "SRC-IMPORT-CASSE").first()
+    assert conso.utilisateur_id == bernadette.id
+
+
+def test_import_cree_un_enregistrement_historique_si_aucune_correspondance(admin_client, db_session, default_location, tmp_path):
+    """Le cas réel signalé : Liatimi n'a pas de compte et n'en aura
+    jamais, mais l'action qu'elle a réalisée doit rester rattachée."""
+    admin_client.post("/sources/", json={
+        "id": "SRC-IMPORT-LIATIMI", "type": "non-scellée", "etat_physique": "liquide",
+        "etat_utilisation": "en utilisation", "date_arrivee": "2018-01-01",
+        "emplacement_habituel_id": default_location, "quantite_initiale": 200, "unite_quantite": "g",
+    })
+    chemin = _ecrire(tmp_path, [["SRC-IMPORT-LIATIMI", "10/03/2019", 200, 190, None, "", "Liatimi"]])
+
+    rapport = importer_consommations_historiques(chemin, db_session)
+
+    assert rapport["utilisateurs_historiques_crees"] == ["Liatimi"]
+    from app.models.user import UserDB
+    liatimi = db_session.query(UserDB).filter(UserDB.username == "Liatimi").first()
+    assert liatimi is not None
+    assert liatimi.is_active is False
+
+    from app.models.consumption import ConsumptionDB
+    conso = db_session.query(ConsumptionDB).filter(ConsumptionDB.source_id == "SRC-IMPORT-LIATIMI").first()
+    assert conso.utilisateur_id == liatimi.id
+
+
+def test_import_meme_utilisateur_sur_plusieurs_lignes_ne_cree_qu_un_seul_enregistrement(admin_client, db_session, default_location, tmp_path):
+    admin_client.post("/sources/", json={
+        "id": "SRC-IMPORT-REPETE", "type": "non-scellée", "etat_physique": "liquide",
+        "etat_utilisation": "en utilisation", "date_arrivee": "2018-01-01",
+        "emplacement_habituel_id": default_location, "quantite_initiale": 200, "unite_quantite": "g",
+    })
+    chemin = _ecrire(tmp_path, [
+        ["SRC-IMPORT-REPETE", "10/03/2019", 200, 190, None, "", "Liatimi"],
+        ["SRC-IMPORT-REPETE", "15/06/2019", 190, 180, None, "", "Liatimi"],
+    ])
+
+    importer_consommations_historiques(chemin, db_session)
+
+    from app.models.user import UserDB
+    assert db_session.query(UserDB).filter(UserDB.username == "Liatimi").count() == 1
+
+
+def test_import_sans_utilisateur_renseigne_ne_cree_rien(admin_client, db_session, default_location, tmp_path):
+    admin_client.post("/sources/", json={
+        "id": "SRC-IMPORT-SANS-USER", "type": "non-scellée", "etat_physique": "liquide",
+        "etat_utilisation": "en utilisation", "date_arrivee": "2018-01-01",
+        "emplacement_habituel_id": default_location, "quantite_initiale": 200, "unite_quantite": "g",
+    })
+    chemin = _ecrire(tmp_path, [["SRC-IMPORT-SANS-USER", "10/03/2019", 200, 190, None, "", ""]])
+
+    rapport = importer_consommations_historiques(chemin, db_session)
+
+    assert rapport["consommations_creees"] == 1
+    assert rapport["utilisateurs_historiques_crees"] == []
+    from app.models.consumption import ConsumptionDB
+    conso = db_session.query(ConsumptionDB).filter(ConsumptionDB.source_id == "SRC-IMPORT-SANS-USER").first()
+    assert conso.utilisateur_id is None
+    assert conso.utilisateur is None
