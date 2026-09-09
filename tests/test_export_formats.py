@@ -72,6 +72,24 @@ def test_export_annexe1_pdf(admin_client, default_location):
     assert resp.content[:4] == b"%PDF"
 
 
+def test_export_annexe1_exclut_sources_archivees(admin_client, default_location):
+    """01/09/2026, demandé directement : ne comptabiliser que les sources
+    utilisables, pas les déchets/remisées/transférées/détruites -- même
+    principe déjà appliqué à export_inventaire_mn.py, corrigé ici pour
+    rester cohérent."""
+    admin_client.post("/sources/", json={
+        "id": "SRC-MN-ARCHIVEE-A1", "type": "scellée", "etat_physique": "solide",
+        "etat_utilisation": "en déchet", "date_arrivee": "2020-01-01",
+        "matiere_nucleaire": True, "emplacement_habituel_id": default_location,
+    })
+    resp = admin_client.get("/export/annexe1.pdf")
+    assert resp.status_code == 200
+    import pdfplumber, io
+    with pdfplumber.open(io.BytesIO(resp.content)) as pdf:
+        texte = "\n".join(page.extract_text() or "" for page in pdf.pages)
+    assert "SRC-MN-ARCHIVEE-A1" not in texte
+
+
 def test_export_annexe1_pdf_est_bien_forme_paysage_a4(admin_client, default_location):
     """14/07/2026, bug réel signalé : converti sans réglage de mise en
     page, le PDF sortait en A4 portrait avec du texte tronqué/superposé

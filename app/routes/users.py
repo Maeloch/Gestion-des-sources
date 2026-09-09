@@ -87,6 +87,14 @@ async def delete_user(
     return
 
 
+class DefinirMotDePasse(BaseModel):
+    nouveau_mot_de_passe: str
+
+
+class RevoquerAcces(BaseModel):
+    actif: bool
+
+
 class FusionRequest(BaseModel):
     cible_id: int
 
@@ -168,6 +176,100 @@ async def changer_mon_mot_de_passe(
         valeur_apres="(changé par l'utilisateur)",
     ))
     return
+
+
+@router.patch("/{user_id}/password", status_code=status.HTTP_204_NO_CONTENT)
+async def definir_mot_de_passe(
+    user_id: int,
+    payload: DefinirMotDePasse,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_admin),
+):
+    """Un administrateur définit directement le mot de passe d'un
+    utilisateur, sans connaître l'ancien -- demandé le 01/09/2026,
+    d'après la gestion des comptes de Yunohost. Différent de
+    /me/password (self-service, exige l'ancien mot de passe) : ici,
+    l'admin agit sur N'IMPORTE QUEL compte, y compris le sien -- pas de
+    restriction articielle, il est déjà pleinement authentifié en tant
+    qu'admin dans cette session.
+
+    Refusé sur un enregistrement historique (is_active=False, jamais
+    connectable par construction -- lui donner un mot de passe n'aurait
+    aucun sens ; pour redonner un accès à quelqu'un, réactiver son accès
+    d'abord, voir la route dédiée ci-dessous)."""
+    db_user = UserRepository(db).get_by_id(user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+    if not db_user.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="Cet utilisateur est un enregistrement historique (accès révoqué ou jamais "
+                   "accordé) : réactive d'abord son accès avant de lui définir un mot de passe.",
+        )
+    if len(payload.nouveau_mot_de_passe) < 8:
+        raise HTTPException(status_code=400, detail="Le nouveau mot de passe doit faire au moins 8 caractères.")
+
+    db_user.hashed_password = get_password_hash(payload.nouveau_mot_de_passe)
+    db.commit()
+
+    AuditRepository(db).create(AuditLogCreate(
+        utilisateur=current_user.username,
+        action="UPDATE",
+        table_modifiee="users",
+        id_source=None,
+        champ_modifie="mot_de_passe",
+        valeur_avant=f"(défini par l'administrateur pour {db_user.username})",
+        valeur_apres=f"(défini par l'administrateur pour {db_user.username})",
+    ))
+    return
+
+
+@router.patch("/{user_id}/acces", response_model=UserPublic)
+async def revoquer_ou_reactiver_acces(
+    user_id: int,
+    payload: RevoquerAcces,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_admin),
+):
+    """Révoque (actif=false) ou réactive (actif=true) l'accès d'un
+    utilisateur -- demandé le 01/09/2026, d'après la gestion des comptes
+    de Yunohost ("désactiver plutôt que supprimer"). Réutilise le même
+    champ is_active que les enregistrements historiques (créés à
+    l'import quand une personne n'a pas de compte) : conceptuellement,
+    quelqu'un dont l'accès est révoqué EST devenu un enregistrement
+    historique -- son compte ne se connecte plus, mais sa fiche et son
+    historique restent intacts. Aucune route de suppression n'est
+    nécessaire pour ce cas : "fusionner" existe déjà si un doublon doit
+    disparaître (voir /users/{id}/fusionner), la révocation suffit pour
+    tous les autres cas.
+
+    Bloqué sur soi-même : un administrateur ne doit pas pouvoir se
+    verrouiller lui-même hors de l'application."""
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tu ne peux pas révoquer ton propre accès depuis cette page.",
+        )
+    db_user = UserRepository(db).get_by_id(user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+
+    ancienne_valeur = db_user.is_active
+    db_user.is_active = payload.actif
+    db.commit()
+    db.refresh(db_user)
+
+    if ancienne_valeur != payload.actif:
+        AuditRepository(db).create(AuditLogCreate(
+            utilisateur=current_user.username,
+            action="UPDATE",
+            table_modifiee="users",
+            id_source=None,
+            champ_modifie="is_active",
+            valeur_avant=str(ancienne_valeur),
+            valeur_apres=str(payload.actif),
+        ))
+    return db_user
 
 
 @router.post("/me/demande-role", response_model=RoleRequest)

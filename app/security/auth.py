@@ -32,6 +32,13 @@ class AuthService:
         user = self.user_repo.get_by_username(username)
         if not user:
             return False
+        # Vérifié avant le mot de passe (01/09/2026) : un compte révoqué
+        # (is_active=False) ne doit jamais pouvoir se connecter, même
+        # avec le bon mot de passe -- et un enregistrement historique
+        # (hashed_password=None) ferait planter verify_password() plus
+        # bas plutôt que d'être proprement rejeté ici.
+        if not user.is_active:
+            return False
         if not verify_password(password, user.hashed_password):
             return False
         return user

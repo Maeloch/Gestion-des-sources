@@ -1,283 +1,182 @@
 # Analyse : cahier des charges vs application actuelle
 
-Comparaison faite en relisant le CDC section par section et en vérifiant
-chaque point directement dans le code (pas de suppositions). Le lien vers le
-prototype C n'a techniquement pas pu être récupéré de mon côté (restriction
-sur les URLs que je peux consulter) — colle-moi son contenu si tu veux que
-je vérifie des détails métier précis qui y figureraient.
+Rafraîchi le 01/09/2026 — la précédente version datait du 08/07/2026 (deux
+mois de travail dans l'intervalle). Chaque point ci-dessous a été revérifié
+directement dans le code de la V0.1.43, pas supposé à partir de la version
+précédente de ce document.
 
-## 0. Le point le plus important : l'environnement technique cible
+**Important, demandé explicitement le 01/09/2026 : ce document sert à
+mesurer l'écart, pas à dicter ce qu'il faut corriger.** Plusieurs écarts
+identifiés ici sont des choix délibérés, pas des oublis — signalés comme
+tels ci-dessous plutôt que comme un "manque".
 
-**Décision prise le 07/07/2026 : on reste sur FastAPI + HTML, pas de
-bascule vers Flet.** Raisons données : l'existant est rapide et
-fonctionnel, et il n'y a pas de bénéfice à se lancer dans un outil non
-maîtrisé pour une équipe de 7 personnes. Cette section reste ci-dessous
-pour mémoire (elle explique le contexte de ce choix), mais n'est plus un
-sujet ouvert.
+## 0. L'environnement technique cible — tranché, définitivement
 
-Le CDC est explicite :
-
-> Python, **Flet**, SQLite, PC infogéré, fonctionnement autonome
-
-**L'application actuelle n'est pas construite avec Flet.** C'est une
-application web classique : FastAPI (serveur) + pages HTML (Jinja2) +
-SQLAlchemy + SQLite. Ça fonctionne, c'est une architecture saine et
-répandue — mais ce n'est pas ce que demandait le CDC, et ça change des
-choses concrètes pour ton contexte :
-
-| | Application actuelle (FastAPI + HTML) | Flet (demandé par le CDC) |
-|---|---|---|
-| Lancement | Ouvrir un terminal, activer un environnement virtuel, taper une commande, puis ouvrir un navigateur à une adresse | Double-clic sur un exécutable (`.exe` sous Windows) |
-| Adapté à un "PC infogéré" | Fonctionne, mais suppose Python installé et accessible, et à l'aise avec un terminal | Conçu pour ça : un seul fichier à distribuer, sans installation Python visible pour l'utilisateur final |
-| Multi-postes | Peut être ouvert depuis plusieurs postes du réseau si le serveur tourne quelque part (mais ce n'est pas configuré comme ça actuellement : SQLite + un seul process) | Plutôt pensé mono-poste (sauf à utiliser le mode "app web" de Flet, qui revient alors à la même logique que maintenant) |
-| Ce qui existe déjà | Tout ce qu'on a construit ensemble depuis le début de cette conversation | Rien : il faudrait reconstruire l'interface (pas la base de données ni la logique métier, qui sont réutilisables) |
-
-Je le signale maintenant, avant d'aller plus loin, parce que c'est le genre
-de décision qui vaut mieux être prise consciemmentqu'en continuant
-à empiler des fonctionnalités sur une base qui ne correspond pas à ce que
-tu avais initialement demandé. Trois options s'offrent à toi, honnêtement :
-
-1. **Continuer avec FastAPI + HTML** (l'existant). Le plus rapide, rien à
-   jeter. Fonctionne très bien tant que l'app tourne sur un poste avec
-   Python installé et qu'on t'apprend deux commandes à lancer (ce qu'on a
-   déjà commencé à faire). Ce n'est pas ce que demandait le CDC, mais rien
-   n'empêche de considérer que le besoin réel a évolué depuis que ce CDC a
-   été écrit.
-2. **Réécrire l'interface en Flet**, en gardant les modèles de données, la
-   logique métier (décroissance, consommation, permissions) et la base
-   SQLite tels quels — seule la couche présentation (actuellement
-   `templates/` + `routes/`) serait à refaire. C'est un chantier réel, pas
-   un simple portage.
-3. **Un entre-deux** : garder FastAPI mais l'empaqueter pour qu'il se lance
-   plus simplement (icône à double-cliquer qui démarre le serveur et ouvre
-   le navigateur automatiquement), sans migrer vers Flet.
-
-Je ne peux pas trancher ça à ta place — c'est une vraie question de priorités
-et de contraintes de déploiement chez toi. Mon avis technique est en bas de
-ce document.
+**Décision prise le 07/07/2026, reconfirmée le 01/09/2026 : on reste sur
+FastAPI + HTML, Flet abandonné.** Le CDC demandait Python + Flet (une
+application de bureau, exécutable à double-cliquer, pensée pour un poste
+"infogéré" sans terminal visible). Raison du choix, redite le 01/09 : Flet
+correspondait au cahier des charges au moment où il a été écrit, mais la
+solution HTML actuelle fonctionne très bien en pratique — pas de bénéfice
+à reconstruire l'interface dans un outil non maîtrisé pour une équipe de 7
+personnes. Ce n'est plus un sujet ouvert, à ne pas rouvrir.
 
 ---
 
 ## 1. Modèle métier : Source radioactive
 
-| Champ du CDC | Existe dans l'appli ? |
+| Champ du CDC | État au 01/09/2026 |
 |---|---|
-| id_source | ✅ (`id`) |
-| type_source (scellée/non-scellée) | ✅ (`type`) |
-| etat_physique (solide/liquide/gaz) | ✅ |
-| **fournisseur** | ❌ absent (seul `num_source_fabricant`, le numéro, existe — pas le nom du fournisseur/fabricant) |
-| numero_fabricant | ✅ (`num_source_fabricant`) |
-| certificat_etalonnage | ✅ (`num_certificat_etalonnage`) |
-| date_arrivee | ✅ |
-| emplacement | ✅ (`lieu_stockage`, en texte libre pour l'instant — un vrai système de Lieux existe en base mais n'est pas encore relié aux sources, voir section 6) |
-| statut | ⚠️ existe (`etat_utilisation`) mais **valeurs différentes** : l'appli propose *en utilisation / remisée / en déchet / en attente* ; le CDC voulait *en utilisation / stockée / déchet / **transférée** / **détruite***. "Transférée" et "détruite" n'existent pas actuellement. |
-| lien_dossier | ✅ (`lien_dossier_admin`) |
-| matiere_nucleaire | ✅ — et c'est même devenu la base du cloisonnement d'accès par rôle |
-| **commentaire** | ❌ absent sur la source elle-même (existe seulement sur consommations et mouvements) |
+| id_source, type_source, etat_physique, numero_fabricant, certificat_etalonnage, date_arrivee, lien_dossier, matiere_nucleaire | ✅ (inchangé depuis juillet) |
+| **fournisseur** | ✅ résolu (`app/models/source.py`) |
+| **commentaire** | ✅ résolu, sur la source elle-même en plus des consommations/mouvements |
+| statut (etat_utilisation) | ✅ résolu : "transférée" et "détruite" ajoutés le 04/07/2026 pour correspondre au CDC, en plus des valeurs déjà présentes |
+| emplacement | ✅ résolu et dépassé : système de Lieux relié aux sources (emplacement habituel/actuel), avec cycle d'emprunt/retour complet (Mouvements) — pas prévu par le CDC, ajouté sur demande le 08/07/2026 |
 
 ## 2. Inventaire matière (quantités liquide/gaz)
 
-Le CDC veut, pour chaque source consommable :
-
-- **Liquide** : masse actuelle **et** masse initiale
-- **Gaz** : pression actuelle, pression initiale, **et volume du récipient**
-
-**❌ Écart réel.** L'appli actuelle ne stocke qu'une seule quantité
-(`quantite`, qui diminue à chaque consommation) : la valeur *initiale* n'est
-gardée nulle part une fois qu'on commence à consommer, et le *volume du
-récipient* (pour les gaz) n'existe pas du tout comme champ. Aujourd'hui, il
-est donc impossible d'afficher "il reste 40% de la quantité initiale" ou de
-calculer une pression à partir d'un volume connu. Ce sont des champs à
-ajouter.
+| Demandé | État |
+|---|---|
+| Masse actuelle **et** initiale (liquide) | ✅ résolu (`quantite_initiale`) |
+| Pression actuelle, initiale, **volume du récipient** (gaz) | ✅ résolu (`volume_recipient`) |
 
 ## 3. Radioéléments : relation N:N
 
-C'est l'écart de structure le plus important après la question Flet.
+**Écart maintenu délibérément, pas à corriger — décision du 01/09/2026.**
 
-Le CDC décrit clairement **deux notions séparées** :
-- le radioélément en tant que tel (ex. Co-60), avec sa **période** (propriété
-  physique universelle) et ses données LaraWeb — indépendant de toute source ;
-- l'association entre une source donnée et un radioélément donné, avec une
-  **activité de référence propre à cette source** — une relation N:N (une
-  source peut avoir plusieurs radioéléments, un même radioélément peut être
-  présent dans plusieurs sources).
-
-Le CDC liste d'ailleurs explicitement une table `source_radionuclides`
-séparée de `radionuclides`.
-
-**⚠️ L'application actuelle conflate les deux dans une seule table.** La
-table `radionuclides` mélange à la fois les infos "type de radioélément"
-(nom, période) et les infos "association à une source" (activité,
-date de référence) dans une seule ligne par source. Concrètement, si Co-60
-est présent dans 10 sources différentes, sa période (5,27 ans, une
-constante physique) est recopiée 10 fois — avec un risque réel qu'une
-saisie diffère d'une ligne à l'autre par erreur.
-
-C'est fonctionnel tel quel (j'ai testé), mais ce n'est pas la structure que
-demandait le CDC, et une vraie table de catalogue des radioéléments (avec
-import LaraWeb, voir section 4) demanderait cette séparation. À
-restructurer si on veut suivre le CDC à la lettre.
+Le CDC voulait deux tables séparées (catalogue des radioéléments avec
+période/LaraWeb, distinct de leur association à une source). L'application
+garde tout dans une seule table `radionuclides` (une ligne par source, la
+période recopiée à chaque fois). Techniquement toujours vrai — mais la
+solution N:N est devenue inutile en pratique : le cache LaraWeb
+(`lara_cache`, résolu en section 6) joue déjà le rôle de référence partagée
+pour les données physiques (période, activité spécifique), sans nécessiter
+de restructurer le schéma. Rien à faire ici.
 
 ## 4. Décroissance radioactive
 
 | Demandé | État |
 |---|---|
-| Formule A(t)=A0×exp(-ln2×t/T½) | ✅ implémentée telle quelle, vérifiée |
-| Activité à la date de référence | ✅ (c'est la valeur stockée) |
-| Activité actuelle | ✅ affichée, calculée à la volée (jamais stockée, conforme au CDC) |
-| **Activité à une date choisie** | ❌ pas d'interface pour choisir une date arbitraire ; seule "aujourd'hui" est calculé |
-| **Activité totale de la source** (= activité spécifique × quantité restante, pour liquide/gaz) | ❌ pas calculée du tout actuellement |
+| Formule A(t)=A0×exp(-ln2×t/T½) | ✅ |
+| Activité à la date de référence / activité actuelle | ✅ |
+| **Activité à une date choisie** | ⚠️ partiellement résolu : `activite_actuelle_bq()` accepte un paramètre de date depuis le service (utilisé par le spectre-type, qui expose une date de référence choisie par l'utilisateur) — mais la page Radionucléides elle-même n'offre toujours pas de sélecteur de date direct, seul "aujourd'hui" y est calculé |
+| **Activité totale de la source** (activité spécifique × quantité restante) | ⚠️ à vérifier avec toi : le calcul de quantité restante existe (`quantite_restante_calculee`) et l'activité par radionucléide aussi (`activites_par_radionuclide_bq`, généralisée le 30/07 pour plusieurs radionucléides), mais je ne trouve pas de fonction qui les combine explicitement en un seul nombre "activité totale actuelle" affiché comme tel — possible que ce soit déjà ce que montre une page sans que j'aie retrouvé le bon nom de fonction ; à confirmer plutôt que d'affirmer un état que je ne suis pas sûr d'avoir bien vérifié |
 
 ## 5. Consommation des sources
 
 | Demandé | État |
 |---|---|
-| Enregistrer une utilisation (liquide/gaz) | ✅ |
-| Diminution de la quantité disponible | ✅ |
-| Historique conservé | ✅ |
-| Impossible d'obtenir une quantité négative | ✅ (vérifié, message d'erreur clair si quantité insuffisante) |
-| Recalcul automatique des activités | ⚠️ partiel : la décroissance temporelle est recalculée, mais pas "l'activité totale" liée à la quantité restante (dépend de l'écart n°4) |
-| Historiser utilisateur, date, quantité, commentaire | ⚠️ date/quantité/commentaire ✅ ; **l'utilisateur n'est pas stocké directement sur la consommation elle-même** (seulement indirectement, via une entrée séparée dans le journal d'audit) |
+| Enregistrement, historique, impossible d'obtenir une quantité négative | ✅ (inchangé) |
+| **Utilisateur historisé directement sur la consommation** | ✅ largement dépassé (31/08/2026) : `utilisateur_id`, lien vers un véritable compte (ou un enregistrement historique si la personne n'a pas de compte), fiche utilisateur, fusion de doublons |
 
 ## 6. Intégration LaraWeb
 
-**❌ Pas implémentée.** Ce qui existe (`LaraWebService`) est un brouillon
-avec 4 isotopes codés en dur en guise d'exemple ; il n'y a ni appel réel au
-site du LNHB, ni parsing de fichier `.lara`, ni cache SQLite (`lara_cache`,
-demandé par le CDC, n'existe pas), ni gestion des radionucléides inconnus.
-C'est un chantier complet à faire, pas juste un ajustement.
+**✅ Résolu.** `laraweb.py` fait un vrai appel HTTP au LNHB (`fetch_nuclide`),
+avec cache SQLite (`lara_cache`, table dédiée — présente, contrairement à ce
+que disait la version précédente de ce document) et récupération à la
+demande (`get_or_fetch`). Le brouillon à 4 isotopes codés en dur mentionné
+en juillet n'existe plus.
 
 ## 7. Gestion des utilisateurs
 
-Le CDC demandait 3 rôles ; sur ta demande, on est passés à 4 (admin,
-utilisateur MN, utilisateur, lecteur) — c'est une évolution assumée du CDC,
-pas un oubli, donc rien à corriger ici. En revanche :
+Toujours 4 rôles (admin, utilisateur MN, utilisateur, lecteur) — évolution
+assumée du CDC (3 rôles prévus), non remise en cause.
 
-**❌ Un point du CDC n'est couvert par aucun des 4 rôles actuels** : le
-rôle `user_limited` du CDC voulait *"aucun accès aux activités supérieures
-à un seuil d'activité configurable"* — une restriction basée sur le **niveau
-d'activité** (en Bq), configurable, en plus du cloisonnement Matière
-Nucléaire déjà en place. Ce seuil configurable n'existe pas du tout
-actuellement : le cloisonnement actuel est uniquement binaire (MN oui/non),
-pas basé sur un seuil numérique.
+**Seuil d'activité configurable (rôle `user_limited` du CDC) : écart
+maintenu délibérément — décision du 01/09/2026, avec une raison
+réglementaire précise.** Le CDC voulait restreindre l'accès aux activités
+au-delà d'un seuil configurable. Non implémenté, et volontairement laissé
+ainsi : la réglementation impose, a priori, davantage de secret sur
+l'**emplacement** d'une source que sur son **niveau d'activité** — cloisonner
+par seuil d'activité ne répondrait donc pas au bon besoin de confidentialité.
+Trace conservée ici pour mémoire, au cas où cette analyse évoluerait.
+
+**Gestion admin renforcée des comptes** : demandée le 01/09/2026 (changer le
+mot de passe d'un utilisateur, révoquer son accès) — voir
+`RAPPORT_DIAGNOSTIC_ET_CORRECTIONS.md` pour l'état de sa réalisation.
 
 ## 8. Journalisation / audit
 
 | Demandé | État |
 |---|---|
 | date, utilisateur, action, table, valeur avant/après | ✅ |
-| **Adresse IP** | ❌ champ absent du journal d'audit |
-| Aucune suppression physique | ✅ de fait (aucune route ne permet de supprimer une entrée), mais ce n'est pas une contrainte activement imposée en base (rien n'empêche techniquement qu'on l'oublie si une route de suppression était ajoutée un jour par erreur) |
-| **Extraction sur une période donnée** | ❌ le journal ne se filtre que par nombre d'entrées (`limit`), pas par plage de dates |
+| Aucune suppression physique | ✅ de fait (toujours aucune route de suppression) |
 | Consultable depuis l'interface | ✅ |
+| **Adresse IP** | ❌ toujours absent du journal d'audit |
+| **Extraction sur une période donnée** | ❌ toujours limité à un nombre d'entrées (`limit`), pas de filtre par plage de dates |
 
 ## 9. Interface utilisateur
 
 | Demandé | État |
 |---|---|
-| Tableau filtrable, recherche rapide, tri, pagination | ❌ les tableaux (sources, radionucléides...) affichent tout sans filtre ni recherche ni pagination — correct pour quelques dizaines de lignes, ça deviendra pénible au-delà |
-| Source : création / modification / **visualisation détaillée** | Création et modification ✅ (pop-up ajoutées dans notre dernier échange) ; **visualisation détaillée** (une fiche par source regroupant ses radionucléides, mouvements, consommations) ❌ n'existe pas |
+| Tableau filtrable, recherche rapide, tri, pagination | ✅ résolu (`rendreFiltrable`/`rendreTableTriable`/`rendrePaginable`, présents sur toutes les listes) |
+| Source : création / modification / **visualisation détaillée** | ✅ résolu : fiche par source (radionucléides, mouvements, consommations, audit réunis) |
 | Consommation : saisie, historique | ✅ |
-| Radioéléments : activités calculées, infos LaraWeb | Activités ⚠️ partiel (voir section 4) ; infos LaraWeb ❌ |
+| Radioéléments : activités calculées, infos LaraWeb | ✅ (LaraWeb réel, voir section 6) |
 | Audit : consultation | ✅ |
-| **Export CSV / JSON** | ❌ seul un export Excel existe, et uniquement en ligne de commande (pas accessible depuis le site) |
+| **Export CSV / JSON** | ❌ toujours absent — Excel existe et est maintenant accessible depuis l'interface (pas seulement en ligne de commande comme en juillet), mais CSV/JSON n'existent pas |
 
 ## 10. Schéma de base de données
 
 CDC : `sources`, `radionuclides`, `source_radionuclides`, `users`, `roles`,
 `consumptions`, `audit_log`, `lara_cache`.
 
-Existant : `sources`, `radionuclides` (conflate radionuclides +
-source_radionuclides, section 3), `users` (le rôle est une colonne, pas une
-table séparée — un choix raisonnable tant qu'il n'y a que 4 rôles fixes,
-mais différent du schéma suggéré), `consumptions`, `audit_logs`, plus
-`locations` et `movements` qui n'étaient pas dans le CDC (ajoutés à ta
-demande). Manque : `source_radionuclides` séparée, `lara_cache`.
+Existant au 01/09/2026 : `sources`, `radionuclides` (toujours conflaté avec
+`source_radionuclides`, voir section 3 — assumé, pas à corriger),
+`users` (rôle toujours en colonne, pas une table séparée — toujours
+raisonnable pour 4 rôles fixes), `consumptions`, `audit_logs`, `lara_cache`
+(✅ présent, résolu), plus `locations` et `movements` (hors CDC, ajoutés sur
+demande).
 
 ## 11. Sécurité
 
 | Demandé | État |
 |---|---|
-| Authentification | ✅ |
-| Gestion des rôles | ✅ |
-| Validation des saisies | ⚠️ basique (Pydantic vérifie les types), pas de règles métier poussées au-delà |
-| Prévention des suppressions accidentelles | ✅ partiel (confirmation avant suppression, blocage si une source a un historique) |
-| **Sauvegarde automatique de la base** | ❌ n'existe pas du tout |
-| **Restauration** | ❌ n'existe pas du tout |
+| Authentification, gestion des rôles | ✅ |
+| Validation des saisies | ⚠️ basique (inchangé depuis juillet) |
+| Prévention des suppressions accidentelles | ✅ résolu et étendu : sources, consommations avec historique, et désormais utilisateurs portant de l'historique, tous protégés contre la suppression directe |
+| **Sauvegarde automatique de la base** | ✅ résolu partiellement : une sauvegarde horodatée est faite avant chaque mise à jour (`appliquer_version.py`) |
+| **Restauration** | ❌ toujours absente : les sauvegardes existent sur disque, mais aucune procédure ni interface ne les restaure |
 
 ## 12. Livrables du CDC
 
 | Demandé | État |
 |---|---|
-| Architecture détaillée | ⚠️ documentée au fil de nos échanges (rapport de corrections), pas comme un document d'architecture autonome |
-| Schéma SQL complet documenté (clés, index, contraintes) | ⚠️ existe dans le code (modèles SQLAlchemy) mais pas comme document dédié |
-| Diagramme relationnel | ❌ pas produit |
-| Structure IHM Flet | ❌ sans objet tant que la question Flet n'est pas tranchée |
+| Architecture détaillée | ⚠️ inchangé : documentée au fil des rapports, pas comme document autonome |
+| Schéma SQL documenté | ⚠️ inchangé : dans le code (modèles SQLAlchemy), pas comme document dédié |
+| Diagramme relationnel | ❌ toujours pas produit |
+| Structure IHM Flet | — sans objet, Flet abandonné (section 0) |
 | Code des fonctions Python | ✅ |
-| Stratégie de sauvegarde | ❌ |
-| Stratégie de tests | ❌ (pytest est prévu comme dépendance mais aucun test n'existe) |
-| Plan de déploiement | ❌ (le README couvre le lancement en développement, pas un vrai plan de déploiement pour poste "infogéré") |
-| Propositions d'évolutions futures | ✅ (sections "feuille de route" de nos rapports précédents) |
+| Stratégie de sauvegarde | ⚠️ existe en pratique (voir section 11) mais pas documentée comme stratégie à part |
+| Stratégie de tests | ✅ résolu de fait : 260 tests automatisés couvrent largement l'application (relancés avant chaque livraison), même si aucun document ne décrit cette stratégie en tant que telle |
+| Plan de déploiement | ⚠️ inchangé : le README couvre le lancement, pas un plan de déploiement formel pour poste infogéré |
+| Propositions d'évolutions futures | ✅ (sections "feuille de route" des rapports) |
 
 ---
 
-## Ce qui ne doit *pas* être fait (ou à reconsidérer avant de continuer)
+## Écarts maintenus délibérément (pas des oublis, ne pas les "corriger")
 
-- **Ne pas continuer à enrichir la table `radionuclides` actuelle** (par
-  exemple lui ajouter les futurs champs LaraWeb comme `origine_laraweb`)
-  sans d'abord décider si on la sépare en deux tables comme le veut le CDC
-  (section 3) — sinon on construit une deuxième couche sur une fondation
-  qu'il faudra de toute façon reprendre.
-- **Ne pas ajouter de dépendance à un service cloud/SaaS.** Le CDC est
-  explicite : fonctionnement autonome, sans dépendance cloud. Le seul appel
-  externe prévu (LaraWeb, section 6) est un site public de référence
-  scientifique (LNHB), pas un service commercial — c'est cohérent avec le
-  CDC, à condition de garder un cache local et de ne jamais rendre l'appli
-  dépendante de sa disponibilité pour fonctionner au quotidien.
-- **Ne pas construire de fonctionnalité de suppression pour le journal
-  d'audit**, même "réservée aux admins" — le CDC est explicite : aucune
-  suppression physique, jamais.
-- **Ne pas généraliser la modification/suppression aux consommations**
-  sans y réfléchir spécifiquement (déjà signalé dans notre précédent
-  échange) : ça casserait la cohérence entre quantité affichée et
-  historique réel.
+- **Relation N:N radioéléments/sources** (section 3) : devenue inutile en
+  pratique, le cache LaraWeb remplit ce rôle.
+- **Seuil d'activité configurable** (section 7) : la confidentialité
+  réglementaire porte davantage sur l'emplacement que sur l'activité — cette
+  restriction ne répondrait pas au bon besoin. Trace conservée si l'analyse
+  évolue.
+- **Flet** (section 0) : tranché, l'existant fonctionne bien pour une équipe
+  de 7 personnes.
 
----
+## Toujours ouverts (constatés, pas nécessairement à traiter)
 
-## Mon avis sur la question Flet
+Adresse IP et filtrage par période sur l'audit (section 8), export
+CSV/JSON (section 9), restauration de sauvegarde (section 11), sélecteur de
+date libre pour l'activité et confirmation de l'activité totale de la
+source (section 4), livrables formels séparés — diagramme relationnel, plan
+de déploiement (section 12).
 
-Honnêtement : si "PC infogéré" signifie que tes utilisateurs finaux ne sont
-pas censés ouvrir un terminal ni gérer un environnement Python — ce que ta
-propre expérience de lancement (le message d'erreur qu'on a débuggé
-ensemble il y a deux échanges) illustre bien à quel point ça peut vite
-coincer — alors **Flet correspond mieux à la contrainte de départ** qu'une
-appli FastAPI+navigateur. Ce n'est pas un jugement sur la qualité de ce
-qu'on a construit ensemble (qui fonctionne bien et qu'on a testé à fond) :
-c'est une question de modèle de distribution.
+## Ce qui ne doit toujours pas être fait
 
-Cela dit, une bonne partie du travail n'est pas perdue dans tous les cas :
-les modèles de données, les règles métier (décroissance, permissions par
-rôle, cloisonnement MN, règles de consommation) sont indépendants de la
-couche d'affichage et seraient réutilisables presque tels quels dans une
-version Flet — seule la couche `templates/` + une partie de `routes/`
-serait à refaire.
-
-## Suites données à cette analyse
-
-- **Flet : tranché** (07/07/2026), on reste sur FastAPI (voir section 0).
-- **Écarts comblés le 07/07/2026** (voir `RAPPORT_DIAGNOSTIC_ET_CORRECTIONS.md`,
-  section 9) : champs manquants sur les sources (fournisseur, commentaire,
-  quantité initiale, volume du récipient), statuts "transférée"/"détruite",
-  utilisateur sur les consommations, activité totale de la source (avec
-  distinction activité spécifique/totale — à vérifier avec tes collègues,
-  voir rapport).
-- **Toujours ouverts** : relation N:N radioéléments/sources (section 3),
-  intégration LaraWeb réelle (section 6), seuil d'activité configurable
-  (section 7), adresse IP et filtrage par période sur l'audit (section 8),
-  recherche/tri/pagination et fiche détaillée par source (section 9),
-  export CSV/JSON (section 9), sauvegarde/restauration automatique
-  (section 11).
-- **Lieux et mouvements** : implémentés le 08/07/2026 sur la base d'un
-  exemple concret que tu as fourni (voir `RAPPORT_DIAGNOSTIC_ET_CORRECTIONS.md`,
-  section 10) — cycle d'emprunt avec lieu habituel / lieu actuel, retour
-  prévu et réel.
+- Pas de dépendance à un service cloud/SaaS commercial (LaraWeb reste un
+  site public de référence scientifique, pas un service commercial — cohérent
+  avec le CDC).
+- Pas de fonctionnalité de suppression pour le journal d'audit, même
+  réservée aux admins.

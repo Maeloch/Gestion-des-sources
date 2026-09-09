@@ -116,3 +116,126 @@ def test_fusion_utilisateur_inexistant_404(admin_client):
     admin_id = _id_de(admin_client, "admintest")
     resp = admin_client.post("/users/999999/fusionner", json={"cible_id": admin_id})
     assert resp.status_code == 404
+
+
+def test_admin_definit_le_mot_de_passe_dun_autre_utilisateur(admin_client, db_session):
+    """01/09/2026, demandé directement : gestion admin renforcée des
+    comptes, sur le modèle de Yunohost. Différent de /me/password
+    (self-service, exige l'ancien) : ici l'admin agit directement, sans
+    connaître le mot de passe actuel."""
+    from app.repositories.user import UserRepository
+    from app.models.user import UserCreate, UserRole
+    bernadette = UserRepository(db_session).create(UserCreate(
+        username="bdl_pwd", email="bdl_pwd@test.fr", password="ancienmotdepasse1", role=UserRole.utilisateur,
+    ))
+
+    resp = admin_client.patch(f"/users/{bernadette.id}/password", json={"nouveau_mot_de_passe": "nouveaumotdepasse999"})
+    assert resp.status_code == 204
+
+    # Le nouveau mot de passe fonctionne vraiment pour se connecter.
+    from fastapi.testclient import TestClient
+    from app.main import app
+    with TestClient(app) as client_frais:
+        connexion = client_frais.post("/auth/token", data={"username": "bdl_pwd", "password": "nouveaumotdepasse999"})
+        assert connexion.status_code in (200, 303)
+
+
+def test_admin_ne_peut_pas_definir_mot_de_passe_sur_historique(admin_client, db_session):
+    from app.repositories.user import UserRepository
+    from app.models.user import UserCreateHistorique
+    liatimi = UserRepository(db_session).create_historique(UserCreateHistorique(username="Liatimi_pwd"))
+    resp = admin_client.patch(f"/users/{liatimi.id}/password", json={"nouveau_mot_de_passe": "nouveaumotdepasse999"})
+    assert resp.status_code == 400
+
+
+def test_admin_definit_mot_de_passe_trop_court_refuse(admin_client, db_session):
+    from app.repositories.user import UserRepository
+    from app.models.user import UserCreate, UserRole
+    u = UserRepository(db_session).create(UserCreate(
+        username="court_pwd", email="court_pwd@test.fr", password="motdepasse123", role=UserRole.utilisateur,
+    ))
+    resp = admin_client.patch(f"/users/{u.id}/password", json={"nouveau_mot_de_passe": "abc"})
+    assert resp.status_code == 400
+
+
+def test_non_admin_ne_peut_pas_definir_mot_de_passe_dautrui(client, admin_client):
+    from tests.conftest import register_and_login
+    admin_id = _id_de(admin_client, "admintest")
+    lecteur = register_and_login(client, "lecteur_pwd_test", role="lecteur", admin_client=admin_client)
+    resp = lecteur.patch(f"/users/{admin_id}/password", json={"nouveau_mot_de_passe": "nouveaumotdepasse999"})
+    assert resp.status_code in (401, 403)
+
+
+def test_revoquer_acces_empeche_la_connexion(admin_client, db_session):
+    """01/09/2026 : révoquer l'accès (plutôt que supprimer) doit
+    réellement empêcher la connexion, pas seulement changer un champ
+    sans effet."""
+    from app.repositories.user import UserRepository
+    from app.models.user import UserCreate, UserRole
+    u = UserRepository(db_session).create(UserCreate(
+        username="revoque_test", email="revoque_test@test.fr", password="motdepasse123", role=UserRole.utilisateur,
+    ))
+
+    resp = admin_client.patch(f"/users/{u.id}/acces", json={"actif": False})
+    assert resp.status_code == 200
+    assert resp.json()["is_active"] is False
+
+    from fastapi.testclient import TestClient
+    from app.main import app
+    with TestClient(app) as client_frais:
+        connexion = client_frais.post("/auth/token", data={"username": "revoque_test", "password": "motdepasse123"})
+        assert connexion.status_code == 401
+
+
+def test_reactiver_acces_permet_de_nouveau_la_connexion(admin_client, db_session):
+    from app.repositories.user import UserRepository
+    from app.models.user import UserCreate, UserRole
+    u = UserRepository(db_session).create(UserCreate(
+        username="reactive_test", email="reactive_test@test.fr", password="motdepasse123", role=UserRole.utilisateur,
+    ))
+    admin_client.patch(f"/users/{u.id}/acces", json={"actif": False})
+
+    resp = admin_client.patch(f"/users/{u.id}/acces", json={"actif": True})
+    assert resp.status_code == 200
+    assert resp.json()["is_active"] is True
+
+    from fastapi.testclient import TestClient
+    from app.main import app
+    with TestClient(app) as client_frais:
+        connexion = client_frais.post("/auth/token", data={"username": "reactive_test", "password": "motdepasse123"})
+        assert connexion.status_code in (200, 303)
+
+
+def test_admin_ne_peut_pas_revoquer_son_propre_acces(admin_client):
+    admin_id = _id_de(admin_client, "admintest")
+    resp = admin_client.patch(f"/users/{admin_id}/acces", json={"actif": False})
+    assert resp.status_code == 400
+
+
+def test_revocation_tracee_dans_audit(admin_client, db_session):
+    from app.repositories.user import UserRepository
+    from app.models.user import UserCreate, UserRole
+    u = UserRepository(db_session).create(UserCreate(
+        username="audit_revoque", email="audit_revoque@test.fr", password="motdepasse123", role=UserRole.utilisateur,
+    ))
+    admin_client.patch(f"/users/{u.id}/acces", json={"actif": False})
+
+    audit = admin_client.get("/audit").text
+    assert "audit_revoque" in audit or "is_active" in audit.lower()
+
+
+def test_connexion_sur_historique_ne_plante_pas(db_session):
+    """01/09/2026, vrai bug trouvé en construisant la révocation : un
+    enregistrement historique n'a pas de mot de passe du tout
+    (hashed_password=None) -- verify_password() planterait dessus si
+    is_active n'était pas vérifié avant. Doit échouer proprement (401),
+    jamais planter (500)."""
+    from app.repositories.user import UserRepository
+    from app.models.user import UserCreateHistorique
+    UserRepository(db_session).create_historique(UserCreateHistorique(username="Liatimi_connexion"))
+
+    from fastapi.testclient import TestClient
+    from app.main import app
+    with TestClient(app) as client_frais:
+        connexion = client_frais.post("/auth/token", data={"username": "Liatimi_connexion", "password": "peu importe"})
+        assert connexion.status_code == 401

@@ -3582,3 +3582,133 @@ corrigé en reprenant l'ordre déjà établi pour ce cas.
 fiche utilisateur, migration appelée au démarrage), `app/routes/users.py`
 (protection suppression, route fusion), `app/templates/users.html`
 (lien vers la fiche, badge historique), `tests/test_import_consommations_historiques.py`.
+
+---
+
+## 50. V0.1.43 (01/09/2026) : exclusion des sources archivées du comptage MN
+
+### La demande
+
+Deux volets. Le second, présenté comme une "nouveauté facile" : ne pas
+comptabiliser les déchets/remisées dans l'inventaire des matières
+nucléaires, seulement les sources utilisables. Le premier : relier
+l'application aux deux dépôts GitHub personnels de l'utilisateur (SI et
+nuc) -- traité séparément, voir la réponse donnée directement dans la
+conversation plutôt que dans ce rapport technique.
+
+### Ce qui a été trouvé en vérifiant, avant de corriger
+
+`export_inventaire_mn.py` excluait déjà les sources archivées
+(`is_archived`, ajoutée le 13/07/2026) -- mais PAS les deux autres
+exports concernés par le même comptage réglementaire, `export_annexe1.py`
+et `export_tableau1a.py`, qui ne filtraient que sur `matiere_nucleaire`,
+sans tenir compte de l'état d'utilisation. Exactement le genre
+d'incohérence entre plusieurs endroits équivalents que l'utilisateur a
+demandé d'éviter systématiquement (voir la passe boutons, V0.1.39).
+
+Revue exhaustive de tous les usages de `matiere_nucleaire` dans
+l'application (20+ occurrences) avant de corriger quoi que ce soit,
+pour ne pas se limiter aux deux endroits déjà identifiés : les autres
+usages relèvent soit du contrôle d'accès (masquer les sources MN aux
+utilisateurs non habilités -- ne doit pas changer), soit de la
+détection automatique à la création/import (ne doit pas changer non
+plus). Seuls Annexe 1 et Tableau 1a comptent réellement vers un total
+réglementaire, comme l'inventaire MN déjà corrigé.
+
+### Correctif
+
+Même filtre qu'`export_inventaire_mn.py` (`and not is_archived(s)`,
+fonction déjà existante dans `models/source.py`) appliqué aux deux
+exports manquants -- aucune nouvelle logique à écrire, juste étendre ce
+qui existait déjà correctement à un seul endroit.
+
+### Testé
+
+293 tests automatisés (2 nouveaux), suivant exactement le même patron
+que le test déjà existant pour l'inventaire MN.
+
+### Fichiers modifiés
+
+`app/services/export_annexe1.py`, `app/services/export_tableau1a.py`,
+`tests/test_export_formats.py`, `tests/test_tableau1a.py`.
+
+---
+
+## 51. V0.1.44 (01/09/2026) : rafraîchissement du CDC, gestion admin renforcée
+
+### Rafraîchissement d'ANALYSE_CDC_VS_APPLICATION.md
+
+Demandé directement : revoir ce document, vieux de deux mois, en gardant
+à l'esprit que plusieurs écarts qu'il liste sont des choix délibérés, pas
+des oublis. Chaque section revérifiée directement dans le code de la
+V0.1.43 plutôt que recopiée depuis la version précédente. Beaucoup
+d'écarts listés en juillet sont en réalité résolus depuis (LaraWeb réel,
+recherche/tri/pagination, fiche détaillée, utilisateur sur les
+consommations, très largement dépassé) -- signalé clairement plutôt que
+de laisser une liste partiellement fausse.
+
+Deux écarts explicitement actés comme délibérés, sur demande directe :
+- La relation N:N radioéléments/sources (le plus gros écart structurel
+  du CDC) : devenue inutile en pratique, le cache LaraWeb joue déjà le
+  rôle de référence partagée pour les données physiques.
+- Le seuil d'activité configurable (rôle `user_limited` du CDC) : la
+  réglementation impose a priori davantage de secret sur l'emplacement
+  d'une source que sur son activité -- cette restriction ne répondrait
+  pas au bon besoin. Trace conservée dans le document plutôt que
+  silencieusement abandonnée.
+
+Restent ouverts, constatés sans jugement : adresse IP et filtrage par
+période sur l'audit, export CSV/JSON, restauration de sauvegarde (la
+sauvegarde existe, pas la restauration), livrables formels séparés
+(diagramme relationnel, plan de déploiement).
+
+### Gestion admin renforcée des comptes
+
+Demandé directement, sur le modèle de Yunohost ("gestion des users pas
+mal", d'après l'expérience de l'utilisateur avec son propre serveur) :
+un administrateur peut désormais définir directement le mot de passe
+d'un utilisateur (sans connaître l'ancien -- différent de `/me/password`,
+self-service, qui l'exige) et révoquer ou réactiver son accès.
+
+La révocation réutilise `is_active`, déjà en place pour les
+enregistrements historiques créés à l'import : conceptuellement,
+quelqu'un dont l'accès est révoqué devient un enregistrement historique
+-- sa fiche et son historique restent intacts, il ne peut simplement
+plus se connecter. Aucune nouvelle route de suppression n'était
+nécessaire : "fusionner" (V0.1.42) couvre déjà le cas d'un doublon à
+faire disparaître.
+
+**Un vrai problème de sécurité trouvé en construisant cette
+fonctionnalité, pas en la cherchant** : `is_active` n'était en réalité
+jamais vérifié à la connexion. La révocation, sans ce correctif,
+n'aurait eu aucun effet réel -- et tenter de se connecter avec le nom
+d'un enregistrement historique (sans mot de passe du tout) aurait fait
+planter le serveur (`verify_password()` appelée avec un hash `None`)
+plutôt que d'échouer proprement. Corrigé : `is_active` vérifié avant
+toute tentative de mot de passe dans `authenticate_user()`.
+
+Un bug d'ordre de routes trouvé et corrigé par la suite de tests, pas
+par relecture : `/{user_id}/password` (nouvelle route), placée avant
+`/me/password` (existante) dans le fichier, interceptait cette dernière
+-- une requête vers `/me/password` était prise pour `/{user_id=me}/password`,
+et rejetée par la vérification admin avant même que FastAPI tente de
+convertir "me" en entier. Déplacé après toutes les routes `/me/...`.
+
+Vérifié avec un vrai moteur DOM (pas seulement les tests automatisés) :
+aucune erreur JavaScript au chargement des deux fiches (compte actif et
+historique), bouton "Définir un mot de passe" fonctionnel.
+
+### Testé
+
+299 tests automatisés (18 nouveaux), incluant une reproduction complète
+du problème de connexion sur un enregistrement historique (vérifié que
+ça échoue proprement, pas que ça plante).
+
+### Fichiers modifiés
+
+`app/security/auth.py` (`is_active` vérifié avant le mot de passe),
+`app/routes/users.py` (routes `/{id}/password` et `/{id}/acces`, remises
+dans le bon ordre), `app/templates/fiche_utilisateur.html` (boutons et
+pop-up, conditionnés au statut actif/historique),
+`tests/test_fiche_utilisateur_et_fusion.py`,
+`ANALYSE_CDC_VS_APPLICATION.md` (réécrit).

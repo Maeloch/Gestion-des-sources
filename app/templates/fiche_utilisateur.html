@@ -16,7 +16,15 @@
                 <span class="badge badge-archived">historique — jamais connecté</span>
                 {% endif %}
             </div>
-            <button type="button" onclick="document.getElementById('fusionModal').classList.add('open')">Fusionner avec...</button>
+            <div style="display:flex; gap:0.6rem; align-items:center;">
+                {% if utilisateur.is_active %}
+                <button type="button" onclick="document.getElementById('motDePasseAdminModal').classList.add('open')">Définir un mot de passe</button>
+                <button type="button" class="danger" onclick="revoquerOuReactiver(false)">Révoquer l'accès</button>
+                {% else %}
+                <button type="button" class="primary" onclick="revoquerOuReactiver(true)">Réactiver l'accès</button>
+                {% endif %}
+                <button type="button" onclick="document.getElementById('fusionModal').classList.add('open')">Fusionner avec...</button>
+            </div>
         </div>
 
         <div class="fiche-grid">
@@ -92,6 +100,24 @@
         {% endif %}
     </div>
 
+    {% if utilisateur.is_active %}
+    <div class="modal-overlay" id="motDePasseAdminModal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="document.getElementById('motDePasseAdminModal').classList.remove('open')">&times;</button>
+            <h3>Définir un mot de passe pour "{{ utilisateur.username }}"</h3>
+            <p class="hint">Remplace directement son mot de passe, sans avoir besoin de l'ancien -- à lui communiquer ensuite par un moyen sûr.</p>
+            <form id="motDePasseAdminForm">
+                <label for="nouveau_mdp_admin">Nouveau mot de passe (8 caractères minimum)</label>
+                <input type="password" id="nouveau_mdp_admin" minlength="8" required>
+                <div class="modal-actions sans-suppression">
+                    <button type="button" onclick="document.getElementById('motDePasseAdminModal').classList.remove('open')">Annuler</button>
+                    <button type="submit" class="primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="modal-overlay" id="fusionModal">
         <div class="modal-box">
             <button class="modal-close" onclick="document.getElementById('fusionModal').classList.remove('open')">&times;</button>
@@ -134,5 +160,46 @@
                 alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
             }
         });
+
+        const formMotDePasseAdmin = document.getElementById('motDePasseAdminForm');
+        if (formMotDePasseAdmin) {
+            formMotDePasseAdmin.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const nouveauMdp = document.getElementById('nouveau_mdp_admin').value;
+                const response = await fetch(`/users/{{ utilisateur.id }}/password`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nouveau_mot_de_passe: nouveauMdp }),
+                });
+                if (response.ok) {
+                    document.getElementById('motDePasseAdminModal').classList.remove('open');
+                    alert('Nouveau mot de passe enregistré.');
+                    document.getElementById('nouveau_mdp_admin').value = '';
+                } else if (response.status === 401) {
+                    window.location.href = '/auth/login';
+                } else {
+                    const error = await response.json();
+                    alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+                }
+            });
+        }
+
+        async function revoquerOuReactiver(actif) {
+            const libelle = actif ? 'réactiver l\'accès de' : 'révoquer l\'accès de';
+            if (!confirm(`Confirmer : ${libelle} "{{ utilisateur.username }}" ?`)) return;
+            const response = await fetch(`/users/{{ utilisateur.id }}/acces`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ actif: actif }),
+            });
+            if (response.ok) {
+                window.location.reload();
+            } else if (response.status === 401) {
+                window.location.href = '/auth/login';
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        }
     </script>
 {% endblock %}

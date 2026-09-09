@@ -31,11 +31,18 @@ TEMPLATE_PATH = Path(__file__).parent.parent / "resources" / "annexe1_template.x
 
 def generer_annexe1(db, output_path: str) -> int:
     """Renvoie le nombre de lignes générées (une par radionucléide d'une
-    source Matière Nucléaire, pas une par source)."""
+    source Matière Nucléaire, pas une par source).
+
+    Sources archivées (remisée, en déchet, transférée, détruite) exclues
+    du comptage (demandé le 01/09/2026) : l'inventaire physique ne porte
+    que sur ce qui est effectivement utilisable, pas sur ce qui ne l'est
+    plus. Même principe déjà appliqué à export_inventaire_mn.py -- corrigé
+    ici pour rester cohérent avec le reste de l'application."""
     from app.repositories.source import SourceRepository
+    from app.models.source import is_archived
     from datetime import date
 
-    sources = [s for s in SourceRepository(db).get_all() if s.matiere_nucleaire]
+    sources = [s for s in SourceRepository(db).get_all() if s.matiere_nucleaire and not is_archived(s)]
 
     wb = openpyxl.load_workbook(TEMPLATE_PATH)
     ws = wb.active

@@ -1,6 +1,6 @@
 # Gestion des Sources Radioactives
 
-**Version 0.1.42** — affichée en bas de la barre latérale de l'application. En cas
+**Version 0.1.44** — affichée en bas de la barre latérale de l'application. En cas
 de doute sur la version que tu es en train de tester (par exemple si tu as
 plusieurs dossiers de versions différentes sur ta machine), regarde le pied
 de page : le numéro doit correspondre à celui annoncé dans le message de
@@ -868,6 +868,15 @@ pour une nouvelle action, mais garde sa propre fiche et son historique
 complet, pour qu'aucune action ne reste jamais sans utilisateur
 rattaché.
 
+Depuis cette même fiche, un administrateur peut aussi **définir
+directement le mot de passe** d'un utilisateur (sans connaître l'ancien --
+à lui communiquer ensuite par un moyen sûr) et **révoquer ou réactiver son
+accès** (01/09/2026, sur le modèle de Yunohost) : un accès révoqué
+équivaut à devenir un enregistrement historique -- la fiche et
+l'historique restent intacts, la personne ne peut simplement plus se
+connecter. C'est la façon recommandée de traiter le départ de quelqu'un,
+plutôt que la suppression.
+
 Depuis la page **Utilisateurs**, cliquer sur un nom ouvre sa **fiche** :
 qui c'est, actif ou historique, et tout ce qui lui est rattaché
 (consommations, mouvements, audit). Bouton **"Fusionner avec..."**
@@ -961,6 +970,11 @@ conservée. La date du jour est renseignée automatiquement (cellule H3,
   comptée dans "Total" mais absente des colonnes IRMA/EPICEA — un
   avertissement te le signale (visible en-tête de la réponse HTTP pour
   l'instant, pas encore affiché dans l'interface).
+- Sources archivées (remisée, en déchet, transférée, détruite) exclues du
+  comptage (01/09/2026) — seules les sources utilisables comptent, même
+  règle que l'inventaire MN imprimable (section suivante), désormais
+  cohérente entre les trois exports concernés (Annexe 1, Tableau 1a,
+  inventaire imprimable).
 - Uranium : catégorisé automatiquement (enrichi ≥20 %, 10-20 %, <10 %,
   naturel, appauvri) à partir du % massique d'U-235 calculé sur l'ensemble
   des isotopes d'uranium (hors U-233, qui a sa propre ligne) d'une même

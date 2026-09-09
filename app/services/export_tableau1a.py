@@ -47,10 +47,15 @@ COLONNES_LOCALISATION = {"EPICEA": "C", "IRMA": "E", "TOTAL": "G"}
 
 
 def generer_tableau1a(db, output_path: str) -> dict:
-    """Renvoie un rapport {avertissements: [...], sources_incluses: N}."""
-    from app.repositories.source import SourceRepository
+    """Renvoie un rapport {avertissements: [...], sources_incluses: N}.
 
-    sources = [s for s in SourceRepository(db).get_all() if s.matiere_nucleaire]
+    Sources archivées exclues du comptage (01/09/2026) -- voir
+    export_annexe1.py pour le raisonnement complet, appliqué ici de la
+    même façon."""
+    from app.repositories.source import SourceRepository
+    from app.models.source import is_archived
+
+    sources = [s for s in SourceRepository(db).get_all() if s.matiere_nucleaire and not is_archived(s)]
 
     # totals[categorie]["EPICEA"|"IRMA"|"AUTRE"]["total"|"u235"] = masse en grammes
     totals = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))

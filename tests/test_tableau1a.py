@@ -76,3 +76,32 @@ def test_tableau1a_agrege_par_lieu(admin_client, tmp_path):
     # Uranium naturel (ligne 12, en kg) : colonne E = IRMA
     assert ws["E12"].value is not None and ws["E12"].value > 0
     assert ws["C12"].value is None  # rien à EPICEA pour l'U naturel
+
+
+def test_tableau1a_exclut_sources_archivees(admin_client, tmp_path, default_location):
+    """01/09/2026, demandé directement : ne comptabiliser que les sources
+    utilisables, pas les déchets/remisées/transférées/détruites -- même
+    principe déjà appliqué à export_inventaire_mn.py, corrigé ici pour
+    rester cohérent."""
+    admin_client.post("/sources/", json={
+        "id": "MN-ARCHIVEE-T1A", "type": "scellée", "etat_physique": "solide",
+        "etat_utilisation": "remisée", "date_arrivee": "2020-01-01",
+        "matiere_nucleaire": True, "emplacement_habituel_id": default_location,
+    })
+    admin_client.post("/radionuclides/", json={
+        "source_id": "MN-ARCHIVEE-T1A", "nom": "239-Pu", "activite": 1e9,
+        "unite_activite": "Bq", "date_reference": "2020-01-01", "periode": 24110,
+    })
+
+    output = tmp_path / "tableau1a_archive.xlsx"
+    resp = admin_client.get("/export/tableau1a.xlsx")
+    assert resp.status_code == 200
+    output.write_bytes(resp.content)
+
+    wb = openpyxl.load_workbook(output)
+    ws = wb.active
+    # Plutonium (ligne 7) : rien nulle part, la source remisée ne doit
+    # apparaître dans aucune colonne de lieu.
+    assert ws["C7"].value is None
+    assert ws["E7"].value is None
+    assert ws["G7"].value is None
