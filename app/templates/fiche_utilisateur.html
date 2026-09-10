@@ -17,6 +17,7 @@
                 {% endif %}
             </div>
             <div style="display:flex; gap:0.6rem; align-items:center;">
+                <button type="button" onclick="document.getElementById('modifierProfilModal').classList.add('open')">Modifier</button>
                 {% if utilisateur.is_active %}
                 <button type="button" onclick="document.getElementById('motDePasseAdminModal').classList.add('open')">Définir un mot de passe</button>
                 <button type="button" class="danger" onclick="revoquerOuReactiver(false)">Révoquer l'accès</button>
@@ -100,6 +101,39 @@
         {% endif %}
     </div>
 
+    <div class="modal-overlay" id="modifierProfilModal">
+        <div class="modal-box">
+            <button class="modal-close" onclick="document.getElementById('modifierProfilModal').classList.remove('open')">&times;</button>
+            <h3>Modifier "{{ utilisateur.username }}"</h3>
+            <form id="modifierProfilForm">
+                <label for="modifier_nom_compte">Nom du compte</label>
+                <input type="text" id="modifier_nom_compte" value="{{ utilisateur.username }}" disabled>
+                <p class="hint" style="margin-top:-0.3rem;">Fixe, ne peut pas être modifié une fois le compte créé.</p>
+
+                <label for="modifier_full_name">Nom complet</label>
+                <input type="text" id="modifier_full_name" value="{{ utilisateur.full_name or '' }}">
+
+                <label for="modifier_email">Email</label>
+                <input type="email" id="modifier_email" value="{{ utilisateur.email or '' }}">
+
+                {% if utilisateur.is_active %}
+                <label for="modifier_role">Rôle</label>
+                <select id="modifier_role">
+                    <option value="admin" {% if utilisateur.role.value == "admin" %}selected{% endif %}>admin</option>
+                    <option value="utilisateur_mn" {% if utilisateur.role.value == "utilisateur_mn" %}selected{% endif %}>utilisateur_mn</option>
+                    <option value="utilisateur" {% if utilisateur.role.value == "utilisateur" %}selected{% endif %}>utilisateur</option>
+                    <option value="lecteur" {% if utilisateur.role.value == "lecteur" %}selected{% endif %}>lecteur</option>
+                </select>
+                {% endif %}
+
+                <div class="modal-actions sans-suppression">
+                    <button type="button" onclick="document.getElementById('modifierProfilModal').classList.remove('open')">Annuler</button>
+                    <button type="submit" class="primary">Sauvegarder</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     {% if utilisateur.is_active %}
     <div class="modal-overlay" id="motDePasseAdminModal">
         <div class="modal-box">
@@ -153,6 +187,31 @@
             });
             if (response.ok) {
                 window.location.href = `/users/${cibleId}/fiche`;
+            } else if (response.status === 401) {
+                window.location.href = '/auth/login';
+            } else {
+                const error = await response.json();
+                alert(`Erreur : ${error.detail || 'Veuillez réessayer.'}`);
+            }
+        });
+
+        document.getElementById('modifierProfilForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const emailSaisi = document.getElementById('modifier_email').value.trim();
+            const corps = {
+                full_name: document.getElementById('modifier_full_name').value.trim() || null,
+                email: emailSaisi || null,
+            };
+            const champRole = document.getElementById('modifier_role');
+            if (champRole) corps.role = champRole.value;
+
+            const response = await fetch(`/users/{{ utilisateur.id }}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(corps),
+            });
+            if (response.ok) {
+                window.location.reload();
             } else if (response.status === 401) {
                 window.location.href = '/auth/login';
             } else {

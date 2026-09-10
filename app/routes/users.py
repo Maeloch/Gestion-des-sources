@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.models.user import User, UserDB, UserPublic, UserRoleUpdate
+from app.models.user import User, UserDB, UserPublic, UserRoleUpdate, UserUpdate, UserRole
 from app.models.role_request import (
     RoleRequestDB, RoleRequestCreate, RoleRequestTraitement, RoleRequest, StatutDemande,
 )
@@ -268,6 +268,78 @@ async def revoquer_ou_reactiver_acces(
             champ_modifie="is_active",
             valeur_avant=str(ancienne_valeur),
             valeur_apres=str(payload.actif),
+        ))
+    return db_user
+
+
+@router.patch("/{user_id}", response_model=UserPublic)
+async def modifier_utilisateur(
+    user_id: int,
+    payload: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_admin),
+):
+    """Édition du profil par un administrateur -- demandé le 09/09/2026,
+    sur le modèle de Yunohost (nom complet, email, rôle), volontairement
+    sans le nom du compte (fixe, voir UserUpdate) ni rien pour la boîte
+    mail (sans objet ici). Chaque champ réellement modifié tracé
+    séparément dans l'audit, même principe que la modification d'une
+    source (voir routes/sources.py).
+
+    Deux protections, en plus de celles déjà en place (suppression,
+    révocation de soi-même) :
+    - Email dupliqué refusé (déjà utilisé par un AUTRE compte).
+    - Impossible de faire disparaître le dernier administrateur actif en
+      changeant son rôle -- l'application se retrouverait sans personne
+      capable de gérer les comptes."""
+    repo = UserRepository(db)
+    existing = repo.get_by_id(user_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+
+    a_mettre_a_jour = payload.model_dump(exclude_unset=True)
+
+    if "email" in a_mettre_a_jour and a_mettre_a_jour["email"]:
+        autre = repo.get_by_email(a_mettre_a_jour["email"])
+        if autre and autre.id != user_id:
+            raise HTTPException(status_code=400, detail="Cette adresse mail est déjà utilisée par un autre compte.")
+
+    if "role" in a_mettre_a_jour:
+        if not existing.is_active:
+            # Sans objet sur un enregistrement historique (jamais
+            # connectable) : ignoré silencieusement plutôt que rejeté,
+            # pour que le même formulaire d'édition puisse être soumis
+            # sans avoir à traiter ce cas différemment côté frontend.
+            del a_mettre_a_jour["role"]
+        elif a_mettre_a_jour["role"] != UserRole.admin and existing.role == UserRole.admin:
+            autres_admins_actifs = [
+                u for u in repo.get_all()
+                if u.id != user_id and u.role == UserRole.admin and u.is_active
+            ]
+            if not autres_admins_actifs:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Impossible de retirer les droits admin : ce serait le dernier "
+                           "administrateur actif de l'application.",
+                )
+
+    valeurs_avant = {champ: getattr(existing, champ) for champ in a_mettre_a_jour.keys()}
+    db_user = repo.update(user_id, a_mettre_a_jour)
+
+    for champ, valeur_avant in valeurs_avant.items():
+        valeur_apres = getattr(db_user, champ)
+        va = valeur_avant.value if hasattr(valeur_avant, "value") else valeur_avant
+        vp = valeur_apres.value if hasattr(valeur_apres, "value") else valeur_apres
+        if va == vp:
+            continue
+        AuditRepository(db).create(AuditLogCreate(
+            utilisateur=current_user.username,
+            action="UPDATE",
+            table_modifiee="users",
+            id_source=None,
+            champ_modifie=champ,
+            valeur_avant=str(va) if va is not None else None,
+            valeur_apres=str(vp) if vp is not None else None,
         ))
     return db_user
 

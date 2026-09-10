@@ -3712,3 +3712,58 @@ dans le bon ordre), `app/templates/fiche_utilisateur.html` (boutons et
 pop-up, conditionnés au statut actif/historique),
 `tests/test_fiche_utilisateur_et_fusion.py`,
 `ANALYSE_CDC_VS_APPLICATION.md` (réécrit).
+
+---
+
+## 52. V0.1.45 (09/09/2026) : édition du profil, sur le modèle de Yunohost
+
+### La demande
+
+Trois captures d'écran de la gestion des comptes de Yunohost transmises
+directement, avec la liste des champs voulus : rien pour la boîte mail
+(quota, alias, transfert -- spécifique à Yunohost, sans objet ici), nom
+du compte fixe, nom complet et email modifiables, droit (rôle), mot de
+passe modifiable et accès révocable -- ces deux derniers déjà construits
+en V0.1.44.
+
+### Réalisé
+
+Nouvelle route `PATCH /users/{id}` (nom complet, email, rôle), avec le
+même principe de traçage que la modification d'une source : chaque champ
+réellement changé (pas juste fourni) tracé séparément dans l'audit.
+
+Le nom du compte n'est structurellement pas dans le modèle d'édition
+(`UserUpdate`), pas seulement ignoré par convention : aucune valeur
+envoyée pour ce champ ne peut avoir d'effet, vérifié par un test qui
+tente explicitement de le modifier.
+
+Deux protections, en plus de celles déjà en place (suppression,
+révocation de soi-même) :
+- **Email dupliqué refusé** : impossible de définir une adresse déjà
+  utilisée par un autre compte.
+- **Dernier administrateur protégé** : impossible de retirer les droits
+  admin d'un compte si aucun autre administrateur actif ne resterait --
+  l'application se retrouverait sans personne capable de gérer les
+  comptes. Vérifié dans les deux sens (refusé s'il ne reste personne
+  d'autre, autorisé s'il reste un second administrateur actif).
+
+Le rôle n'a pas de sens sur un enregistrement historique (jamais
+connectable, donc jamais capable d'exercer quoi que ce soit) : une
+tentative de le modifier est ignorée silencieusement plutôt que
+rejetée, pour que le même formulaire d'édition (côté interface, le
+champ rôle n'apparaît d'ailleurs même pas sur une fiche historique)
+puisse être soumis sans traitement particulier.
+
+### Testé
+
+307 tests automatisés (8 nouveaux). Vérifié aussi avec un vrai serveur
+et un moteur DOM (pas seulement les tests automatisés) : préremplissage
+correct du formulaire, absence du champ rôle sur une fiche historique,
+soumission réelle vérifiée directement en base.
+
+### Fichiers modifiés
+
+`app/models/user.py` (`UserUpdate`), `app/repositories/user.py`
+(méthode `update`), `app/routes/users.py` (route `PATCH /{id}`),
+`app/templates/fiche_utilisateur.html` (bouton et pop-up "Modifier"),
+`tests/test_fiche_utilisateur_et_fusion.py`.

@@ -92,3 +92,17 @@ class UserRepository:
         self.db.commit()
         self.db.refresh(db_user)
         return db_user
+
+    def update(self, user_id: int, donnees: dict) -> Optional[UserDB]:
+        """Applique les champs fournis (déjà validés par l'appelant --
+        unicité de l'email, protection du dernier admin) -- 09/09/2026.
+        `donnees` ne contient que ce qui doit changer (`exclude_unset`
+        côté appelant), pas le dict Pydantic complet."""
+        db_user = self.get_by_id(user_id)
+        if not db_user:
+            return None
+        for champ, valeur in donnees.items():
+            setattr(db_user, champ, valeur)
+        self.db.commit()
+        self.db.refresh(db_user)
+        return db_user

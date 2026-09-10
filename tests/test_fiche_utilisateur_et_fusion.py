@@ -239,3 +239,98 @@ def test_connexion_sur_historique_ne_plante_pas(db_session):
     with TestClient(app) as client_frais:
         connexion = client_frais.post("/auth/token", data={"username": "Liatimi_connexion", "password": "peu importe"})
         assert connexion.status_code == 401
+
+
+def test_admin_modifie_nom_complet_et_email(admin_client, db_session):
+    """09/09/2026, demandé directement sur le modèle de Yunohost."""
+    from app.repositories.user import UserRepository
+    from app.models.user import UserCreate, UserRole
+    u = UserRepository(db_session).create(UserCreate(
+        username="edit_test", email="ancien@test.fr", password="motdepasse123", role=UserRole.utilisateur,
+    ))
+    resp = admin_client.patch(f"/users/{u.id}", json={"full_name": "Nouveau Nom", "email": "nouveau@test.fr"})
+    assert resp.status_code == 200
+    assert resp.json()["full_name"] == "Nouveau Nom"
+    assert resp.json()["email"] == "nouveau@test.fr"
+
+
+def test_modification_email_duplique_refusee(admin_client, db_session):
+    from app.repositories.user import UserRepository
+    from app.models.user import UserCreate, UserRole
+    UserRepository(db_session).create(UserCreate(
+        username="premier_dup", email="pris@test.fr", password="motdepasse123", role=UserRole.utilisateur,
+    ))
+    second = UserRepository(db_session).create(UserCreate(
+        username="second_dup", email="libre@test.fr", password="motdepasse123", role=UserRole.utilisateur,
+    ))
+    resp = admin_client.patch(f"/users/{second.id}", json={"email": "pris@test.fr"})
+    assert resp.status_code == 400
+
+
+def test_nom_de_compte_non_modifiable(admin_client, db_session):
+    """09/09/2026, demandé explicitement : "ID fixe" -- même en envoyant
+    un champ username dans la requête, il ne doit avoir aucun effet
+    (structurellement absent du modèle, pas juste ignoré par convention)."""
+    from app.repositories.user import UserRepository
+    from app.models.user import UserCreate, UserRole
+    u = UserRepository(db_session).create(UserCreate(
+        username="nom_fixe_test", email="nomfixe@test.fr", password="motdepasse123", role=UserRole.utilisateur,
+    ))
+    resp = admin_client.patch(f"/users/{u.id}", json={"username": "nouveau_nom", "full_name": "Test"})
+    assert resp.status_code == 200
+    db_session.refresh(u)
+    assert u.username == "nom_fixe_test"  # inchangé, malgré la tentative
+
+
+def test_impossible_de_retirer_le_dernier_admin_actif(admin_client, db_session):
+    """09/09/2026 : l'application ne doit jamais se retrouver sans aucun
+    administrateur actif capable de gérer les comptes."""
+    from app.repositories.user import UserRepository
+    admin = UserRepository(db_session).get_by_username("admintest")
+    resp = admin_client.patch(f"/users/{admin.id}", json={"role": "lecteur"})
+    assert resp.status_code == 400
+
+
+def test_retirer_admin_possible_sil_en_reste_un_autre(admin_client, db_session):
+    from app.repositories.user import UserRepository
+    from app.models.user import UserCreate, UserRole
+    second_admin = UserRepository(db_session).create(UserCreate(
+        username="second_admin", email="second_admin@test.fr", password="motdepasse123", role=UserRole.admin,
+    ))
+    admin = UserRepository(db_session).get_by_username("admintest")
+    resp = admin_client.patch(f"/users/{admin.id}", json={"role": "lecteur"})
+    assert resp.status_code == 200
+
+
+def test_role_ignore_silencieusement_sur_historique(admin_client, db_session):
+    """Sans objet sur un enregistrement historique (jamais connectable) --
+    ignoré plutôt que rejeté, pour que le même formulaire puisse être
+    soumis sans traitement particulier côté frontend."""
+    from app.repositories.user import UserRepository
+    from app.models.user import UserCreateHistorique
+    liatimi = UserRepository(db_session).create_historique(UserCreateHistorique(username="Liatimi_edit"))
+    resp = admin_client.patch(f"/users/{liatimi.id}", json={"full_name": "Nom Corrigé", "role": "admin"})
+    assert resp.status_code == 200
+    db_session.refresh(liatimi)
+    assert liatimi.full_name == "Nom Corrigé"
+    assert liatimi.role.value == "lecteur"  # inchangé, la tentative a été ignorée
+
+
+def test_modification_tracee_champ_par_champ_dans_audit(admin_client, db_session):
+    from app.repositories.user import UserRepository
+    from app.models.user import UserCreate, UserRole
+    u = UserRepository(db_session).create(UserCreate(
+        username="audit_edit_test", email="audit_edit@test.fr", password="motdepasse123", role=UserRole.utilisateur,
+    ))
+    admin_client.patch(f"/users/{u.id}", json={"full_name": "Nom Audité"})
+
+    audit = admin_client.get("/audit").text
+    assert "audit_edit_test" in audit or "full_name" in audit.lower()
+
+
+def test_non_admin_ne_peut_pas_modifier_le_profil_dautrui(client, admin_client):
+    from tests.conftest import register_and_login
+    admin_id = _id_de(admin_client, "admintest")
+    lecteur = register_and_login(client, "lecteur_edit_test", role="lecteur", admin_client=admin_client)
+    resp = lecteur.patch(f"/users/{admin_id}", json={"full_name": "Piraté"})
+    assert resp.status_code in (401, 403)

@@ -90,3 +90,15 @@ class UserPublic(UserBase):
 
 class UserRoleUpdate(BaseModel):
     role: UserRole
+
+class UserUpdate(BaseModel):
+    """Édition du profil par un administrateur -- demandé le 09/09/2026,
+    sur le modèle de Yunohost, mais volontairement sans rien pour la
+    boîte mail (quota, alias, transfert : sans objet ici) et SANS le nom
+    du compte (`username`), qui reste fixe une fois créé -- comme le
+    champ grisé de Yunohost pour ce même champ. `role` optionnel : sans
+    objet et ignoré pour un enregistrement historique (jamais
+    connectable, donc jamais capable d'exercer un rôle)."""
+    full_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    role: Optional[UserRole] = None

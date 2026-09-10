@@ -1,6 +1,6 @@
 # Gestion des Sources Radioactives
 
-**Version 0.1.44** — affichée en bas de la barre latérale de l'application. En cas
+**Version 0.1.45** — affichée en bas de la barre latérale de l'application. En cas
 de doute sur la version que tu es en train de tester (par exemple si tu as
 plusieurs dossiers de versions différentes sur ta machine), regarde le pied
 de page : le numéro doit correspondre à celui annoncé dans le message de
@@ -876,6 +876,14 @@ accès** (01/09/2026, sur le modèle de Yunohost) : un accès révoqué
 l'historique restent intacts, la personne ne peut simplement plus se
 connecter. C'est la façon recommandée de traiter le départ de quelqu'un,
 plutôt que la suppression.
+
+Bouton **"Modifier"** (09/09/2026, même modèle) pour le nom complet,
+l'email et le rôle -- le nom du compte, lui, reste fixe une fois créé, il
+n'apparaît même pas comme modifiable dans le formulaire. Une adresse déjà
+utilisée par un autre compte est refusée. Retirer les droits admin d'un
+compte est bloqué s'il ne resterait ensuite plus aucun autre
+administrateur actif -- l'application ne doit jamais se retrouver sans
+personne capable de gérer les comptes.
 
 Depuis la page **Utilisateurs**, cliquer sur un nom ouvre sa **fiche** :
 qui c'est, actif ou historique, et tout ce qui lui est rattaché
